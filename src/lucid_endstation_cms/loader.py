@@ -87,7 +87,8 @@ def _get_profile_path() -> Path:
         raise FileNotFoundError(f"CMS_PROFILE_PATH={env_path} does not exist")
 
     # Default: submodule relative to this package
-    pkg_dir = Path(__file__).parent.parent.parent.parent  # up to repo root
+    # __file__ is .../src/lucid_endstation_cms/loader.py -> 3 parents to repo root
+    pkg_dir = Path(__file__).parent.parent.parent
     submodule = pkg_dir / "profile-collection" / "startup"
     if submodule.is_dir():
         return submodule
@@ -154,7 +155,9 @@ def load_profile(
     # Find all numbered startup scripts, sorted
     scripts = sorted(
         p for p in startup_dir.glob("[0-9]*.py")
-        if not p.name.endswith(".pybak") and not p.name.endswith(".bak")
+        if not p.name.endswith(".pybak")
+        and not p.name.endswith(".bak")
+        and "_new." not in p.name  # skip *_new.py variants (experimental rewrites)
     )
 
     ns = _build_seed_namespace()
@@ -173,6 +176,7 @@ def load_profile(
         logger.info("Loading {}", script.name)
         try:
             code = script.read_text(encoding="utf-8")
+            ns["__file__"] = str(script)
             exec(compile(code, str(script), "exec"), ns)
             loaded.append(script.name)
         except Exception:

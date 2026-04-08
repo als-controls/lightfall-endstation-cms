@@ -1,0 +1,4 @@
+[submodule "profile-collection"]
+	path = profile-collection
+	url = https://github.com/NSLS2/cms-profile-collection.git
+	branch = data-security

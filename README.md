@@ -16,18 +16,23 @@ The `static.json` file is a happi-format device catalog extracted from the
 [cms-profile-collection](https://github.com/NSLS2/cms-profile-collection) IPython
 startup scripts (`data-security` branch).
 
-### Device Categories
+### Catalog Summary (109 devices)
 
-| Category | Count | Examples |
-|----------|-------|---------|
-| Motors | ~50 | Monochromator, mirrors, slits, sample stages, detector stages |
-| Area Detectors | ~14 | Pilatus 300K/800K/2M, Prosilica cameras |
-| Scalers/Electrometers | ~20 | Quad electrometers, ion chambers |
-| Fluorescence | 1 | Xspress3 |
-| Serial Devices | ~5 | Linkam stages, diode box |
-| I/O | ~40+ | ioLogik analog/digital, relays, RTDs, thermocouples |
-| Shutters | ~7 | Experiment shutter, photon shutter |
-| Misc | ~5 | Power supplies, chillers, PDUs |
+| Group | Count | Key devices |
+|---|---|---|
+| Optics | 24 | Mono (bragg/pitch/roll/perp), toroidal mirror (6 axes), slits s0-s5, 8 filters |
+| Sample | 21 | smx/smy/sth/schi, arm (x/y/z/phi/r), strans/stilt/srot, Linkam thermal+tensile |
+| Diagnostics | 30 | 2x quad electrometers (8ch), 4 ion chambers, BIMs, diode box, 8 Prosilica cameras |
+| Detectors | 16 | Pilatus 800K + 2M (active), 300K + 800K#2 (inactive), Xspress3, SAXS/WAXS/MAXS stage motors, Ocean Optics |
+| Infrastructure | 13 | 8 PDU switches, chiller, Sorrenson power supply |
+| Shutters | 4 | Photon shutter (open/close/status), experiment shutter trigger |
+
+### Not yet cataloged
+
+- ioLogik analog/digital I/O loop devices (AO, AI, Relay, DI, RTD, TC -- ~44 devices)
+- PhotoThermalAnnealer (uses raw caput/caget, not ophyd)
+- Serial devices (Agilent, Keithley, syringe pump -- all commented out in profile)
+- S4Dev/ICDev/BPMDev (hardcoded absolute PVs in class, no prefix)
 
 ## Source
 

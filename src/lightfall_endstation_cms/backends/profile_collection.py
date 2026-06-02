@@ -1,7 +1,7 @@
-"""LUCID DeviceBackend that loads devices from a CMS profile-collection.
+"""Lightfall DeviceBackend that loads devices from a CMS profile-collection.
 
 This backend executes the NSLS-II CMS IPython startup scripts and extracts
-ophyd device instances, making them available to LUCID without needing a
+ophyd device instances, making them available to Lightfall without needing a
 separate happi JSON catalog.
 
 The profile-collection is the single source of truth for device definitions.
@@ -25,8 +25,8 @@ from uuid import UUID, uuid5, NAMESPACE_DNS
 
 from loguru import logger
 
-from lucid.devices.base import DeviceBackend
-from lucid.devices.model import (
+from lightfall.devices.base import DeviceBackend
+from lightfall.devices.model import (
     ConnectionType,
     DeviceCategory,
     DeviceConfiguration,
@@ -84,10 +84,10 @@ def _get_device_class_path(obj: Any) -> str:
 
 
 class ProfileCollectionBackend(DeviceBackend):
-    """LUCID DeviceBackend backed by the CMS profile-collection scripts.
+    """Lightfall DeviceBackend backed by the CMS profile-collection scripts.
 
     Loads the NSLS-II CMS IPython startup scripts, extracts ophyd devices,
-    and exposes them as DeviceInfo objects for LUCID.
+    and exposes them as DeviceInfo objects for Lightfall.
 
     This is a read-only backend -- devices are defined by the profile scripts.
     """
@@ -122,7 +122,7 @@ class ProfileCollectionBackend(DeviceBackend):
 
     def connect(self) -> bool:
         """Load the profile collection and extract devices."""
-        from lucid_endstation_cms.loader import extract_ophyd_devices, load_profile
+        from lightfall_endstation_cms.loader import extract_ophyd_devices, load_profile
 
         try:
             logger.info("Loading CMS profile-collection...")
@@ -197,7 +197,7 @@ class ProfileCollectionBackend(DeviceBackend):
 
         This is the key advantage of the profile-collection backend:
         devices are already instantiated by the profile scripts, so
-        LUCID can use them directly without happi's load_device() step.
+        Lightfall can use them directly without happi's load_device() step.
         """
         return self._ophyd_instances.get(device_id)
 

@@ -87,7 +87,7 @@ def _get_profile_path() -> Path:
         raise FileNotFoundError(f"CMS_PROFILE_PATH={env_path} does not exist")
 
     # Default: submodule relative to this package
-    # __file__ is .../src/lucid_endstation_cms/loader.py -> 3 parents to repo root
+    # __file__ is .../src/lightfall_endstation_cms/loader.py -> 3 parents to repo root
     pkg_dir = Path(__file__).parent.parent.parent
     submodule = pkg_dir / "profile-collection" / "startup"
     if submodule.is_dir():

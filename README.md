@@ -1,6 +1,6 @@
-# lucid-endstation-cms
+# lightfall-endstation-cms
 
-Device catalog and LUCID plugins for the NSLS-II CMS (Complex Materials Scattering)
+Device catalog and Lightfall plugins for the NSLS-II CMS (Complex Materials Scattering)
 beamline, 11-BM.
 
 ## Overview
@@ -8,7 +8,7 @@ beamline, 11-BM.
 This package provides:
 - A happi JSON device catalog (`static.json`) for all CMS beamline hardware
 - Custom ophyd device classes for CMS-specific equipment
-- LUCID controller plugins for CMS endstation devices
+- Lightfall controller plugins for CMS endstation devices
 
 ## Device Catalog
 

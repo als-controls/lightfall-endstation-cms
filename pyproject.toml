@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "lucid-endstation-cms"
+name = "lightfall-endstation-cms"
 version = "0.1.0"
-description = "LUCID plugins for NSLS-II CMS beamline (11-BM)"
+description = "Lightfall plugins for NSLS-II CMS beamline (11-BM)"
 readme = "README.md"
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
     "ophyd>=1.6.0",
     "bluesky>=1.8.0",
-    "lucid",
+    "lightfall",
     "loguru",
     "numpy",
 ]
@@ -36,11 +36,11 @@ dev = [
     "ruff>=0.1.0",
 ]
 
-[project.entry-points."lucid.plugins"]
-lucid_endstation_cms = "lucid_endstation_cms.manifest:manifest"
+[project.entry-points."lightfall.plugins"]
+lightfall_endstation_cms = "lightfall_endstation_cms.manifest:manifest"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lucid_endstation_cms"]
+packages = ["src/lightfall_endstation_cms"]
 
 [tool.ruff]
 line-length = 100

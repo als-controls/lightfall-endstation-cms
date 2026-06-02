@@ -1,1 +1,1 @@
-"""LUCID device backends for CMS beamline."""
+"""Lightfall device backends for CMS beamline."""

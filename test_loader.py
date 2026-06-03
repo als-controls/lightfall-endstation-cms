@@ -14,7 +14,7 @@ from pathlib import Path
 # Add src to path for development
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from lucid_endstation_cms.loader import (
+from lightfall_endstation_cms.loader import (
     extract_device_classes,
     extract_ophyd_devices,
     load_profile,

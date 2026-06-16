@@ -13,7 +13,7 @@ manifest = PluginManifest(
         PluginEntry(
             type_name="device_backend",
             name="cms_profile_collection",
-            import_path="lightfall_endstation_cms.backends.profile_collection:ProfileCollectionBackend",
+            import_path="lightfall_endstation_cms.plugin:CMSProfileCollectionPlugin",
             metadata={"beamline": "11-BM CMS"},
         ),
     ],

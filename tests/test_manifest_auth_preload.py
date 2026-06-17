@@ -26,8 +26,11 @@ def test_nsls2_auth_provider_is_preload():
 
 
 def test_device_backend_entry_present():
-    # Sanity: the device_backend entry still exists (and is fine to background-load).
+    # Sanity: the device_backend entry still exists and stays background-loaded
+    # (its CMSSessionTrigger only needs to arm before the user finishes login;
+    # preloading it would run the sandboxed connect() synchronously at startup).
     entry = _entry("device_backend", "cms_profile_collection")
     assert entry.import_path == (
         "lightfall_endstation_cms.plugin:CMSProfileCollectionPlugin"
     )
+    assert not entry.preload

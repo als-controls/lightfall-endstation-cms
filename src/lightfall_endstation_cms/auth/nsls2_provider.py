@@ -36,6 +36,25 @@ class NSLS2TiledAuthProvider(AuthProvider):
     def supports_browser_auth(self) -> bool:
         return False
 
+    @staticmethod
+    def _select_password_provider(providers: list) -> Any:
+        """Pick the internal/password auth provider from the server's list.
+
+        Raises RuntimeError if there is none — rather than silently falling back
+        to providers[0] (which could be an OAuth provider, sending credentials
+        to the wrong endpoint) or indexing an empty list (IndexError).
+        """
+        spec = next(
+            (p for p in providers if getattr(p, "mode", None) in ("internal", "password")),
+            None,
+        )
+        if spec is None:
+            modes = [getattr(p, "mode", None) for p in providers]
+            raise RuntimeError(
+                f"No internal/password auth provider at {TILED_URI}; got modes {modes}"
+            )
+        return spec
+
     def _tiled_login(self, username: str, password: str) -> bool:
         """Exchange username+password for a tiled token. BEAMLINE SEAM.
 
@@ -60,10 +79,7 @@ class NSLS2TiledAuthProvider(AuthProvider):
         client = from_uri(TILED_URI)
         context = client.context
         providers = context.server_info.authentication.providers
-        spec = next(
-            (p for p in providers if getattr(p, "mode", None) in ("internal", "password")),
-            providers[0],
-        )
+        spec = self._select_password_provider(providers)
         tokens = password_grant(
             context.http_client,
             spec.links["auth_endpoint"],

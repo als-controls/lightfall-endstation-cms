@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -10,6 +13,28 @@ from lightfall_endstation_cms.auth.nsls2_provider import (
     NSLS2AuthPlugin,
     NSLS2TiledAuthProvider,
 )
+
+
+def test_select_password_provider_picks_internal():
+    providers = [
+        SimpleNamespace(mode="external", provider="oidc"),
+        SimpleNamespace(mode="internal", provider="auth"),
+    ]
+    spec = NSLS2TiledAuthProvider._select_password_provider(providers)
+    assert spec.mode == "internal"
+
+
+def test_select_password_provider_raises_on_empty_list():
+    # Must not IndexError on an empty providers list.
+    with pytest.raises(RuntimeError):
+        NSLS2TiledAuthProvider._select_password_provider([])
+
+
+def test_select_password_provider_raises_when_no_password_mode():
+    # Must not silently fall back to a non-password (e.g. OAuth) provider.
+    providers = [SimpleNamespace(mode="external", provider="oidc")]
+    with pytest.raises(RuntimeError):
+        NSLS2TiledAuthProvider._select_password_provider(providers)
 
 
 def test_plugin_metadata():

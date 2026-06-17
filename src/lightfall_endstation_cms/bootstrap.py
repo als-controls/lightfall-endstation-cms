@@ -76,7 +76,9 @@ class ProfileSessionBootstrapper:
         if scripts:
             startup_dir = str(scripts[0].parent)
             if startup_dir not in sys.path:
-                sys.path.insert(0, startup_dir)
+                # Append (not insert) so the startup dir can't shadow stdlib /
+                # site-packages; sibling-by-filename imports resolve regardless.
+                sys.path.append(startup_dir)
                 logger.info("Added profile startup dir to sys.path: {}", startup_dir)
 
         for script in scripts:

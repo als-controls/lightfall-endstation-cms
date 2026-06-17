@@ -21,6 +21,11 @@ manifest = PluginManifest(
             name="nsls2_tiled",
             import_path="lightfall_endstation_cms.auth.nsls2_provider:NSLS2AuthPlugin",
             metadata={"beamline": "11-BM CMS"},
+            # Preload: the startup login dialog renders one button per registered
+            # auth provider, so this must be in AuthProviderRegistry BEFORE the
+            # dialog is shown. Non-preload (background) plugins load too late and
+            # the "NSLS-II (CMS)" button would be missing from the dialog.
+            preload=True,
         ),
     ],
 )

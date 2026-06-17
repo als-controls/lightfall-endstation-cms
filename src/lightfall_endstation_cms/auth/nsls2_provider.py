@@ -45,18 +45,24 @@ class NSLS2TiledAuthProvider(AuthProvider):
 
         Tests must override this method to avoid hitting the real server.
 
-        The exact call that forces the auth handshake (``_ = client.context``)
-        has been confirmed to work in local testing but must be re-verified
-        against the actual NSLS-II tiled instance at the beamline before
-        go-live (spec §9, open item 1).
+        Uses ``client.login()`` (tiled >=0.2) to drive the interactive auth.
+        The exact prompt path depends on the server's auth mode: ``external``
+        (OAuth) prints a verification URL and auto-opens a browser to the IdP,
+        blocking until Duo is approved; ``internal``/``password`` prompts for
+        username/password on stdin. This must be confirmed against the real
+        NSLS-II tiled instance at the beamline (spec §9, open item 1).
 
         Returns True if a token was obtained and cached to disk; False otherwise.
         """
         from tiled.client import from_uri
 
-        client = from_uri(TILED_URI, username=username or None)
-        _ = client.context  # force the auth handshake (Duo) + token cache
-        logger.info("NSLS-II tiled login complete for '{}'", username)
+        # tiled >=0.2 no longer accepts a `username` kwarg, and `from_uri`
+        # DEFERS auth — so we must call `client.login()` explicitly to trigger
+        # it. For the `external`/OAuth mode this opens a browser to the IdP and
+        # blocks until Duo is approved, then caches the token (remember_me).
+        client = from_uri(TILED_URI)
+        client.login()
+        logger.info("NSLS-II tiled login complete (username hint: '{}')", username)
         return True
 
     async def authenticate(

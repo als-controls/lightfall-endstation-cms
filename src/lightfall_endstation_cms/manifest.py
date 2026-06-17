@@ -16,5 +16,11 @@ manifest = PluginManifest(
             import_path="lightfall_endstation_cms.plugin:CMSProfileCollectionPlugin",
             metadata={"beamline": "11-BM CMS"},
         ),
+        PluginEntry(
+            type_name="auth_provider",
+            name="nsls2_tiled",
+            import_path="lightfall_endstation_cms.auth.nsls2_provider:NSLS2AuthPlugin",
+            metadata={"beamline": "11-BM CMS"},
+        ),
     ],
 )

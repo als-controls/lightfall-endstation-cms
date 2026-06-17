@@ -15,4 +15,8 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
         return "cms_profile_collection"
 
     def create_backend(self) -> DeviceBackend:
-        return ProfileCollectionBackend()
+        backend = ProfileCollectionBackend()
+        from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
+
+        CMSSessionTrigger(backend).arm()
+        return backend

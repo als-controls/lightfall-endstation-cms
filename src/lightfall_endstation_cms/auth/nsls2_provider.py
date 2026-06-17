@@ -1,10 +1,11 @@
-"""NSLS-II tiled/Duo authentication for the CMS deployment.
+"""NSLS-II tiled authentication for the CMS deployment.
 
-Authenticating here performs the tiled login against tiled.nsls2.bnl.gov,
-which fires a Duo push and caches the resulting token on disk. Because tiled
-keys its token cache by server, the profile-collection's later
-``from_profile("nsls2")`` reads resolve from that warm cache with no second
-Duo push.
+The login dialog collects the user's BNL username + password (masked) and this
+provider exchanges them for a tiled token via the server's password grant
+(which triggers the user's Duo push). The password is sent only to the tiled
+auth endpoint over HTTPS and is never stored by Lightfall. The token is cached
+to disk (remember_me), so the profile-collection's later
+``from_profile("nsls2")`` reads resolve from that warm cache with no re-prompt.
 """
 
 from __future__ import annotations
@@ -29,40 +30,49 @@ class NSLS2TiledAuthProvider(AuthProvider):
 
     @property
     def supports_password_auth(self) -> bool:
-        return False  # username + Duo push, no password typed into Lightfall
+        return True  # username + password (masked) collected in the login dialog
 
     @property
     def supports_browser_auth(self) -> bool:
         return False
 
-    def _tiled_login(self, username: str) -> bool:
-        """Perform the interactive tiled login (Duo). BEAMLINE SEAM.
+    def _tiled_login(self, username: str, password: str) -> bool:
+        """Exchange username+password for a tiled token. BEAMLINE SEAM.
 
-        THIS IS THE LIVE PRODUCTION IMPLEMENTATION.  Calling this method
-        against the real NSLS-II tiled server will immediately trigger an
-        interactive Duo push to the user's device and block until the push
-        is approved or times out.
+        THIS IS THE LIVE PRODUCTION IMPLEMENTATION. Against the real NSLS-II
+        tiled server this drives the server's password grant with the
+        credentials the user typed into the login dialog (which triggers their
+        Duo push) and blocks until it resolves. Tests override this method.
 
-        Tests must override this method to avoid hitting the real server.
+        Implementation note (tiled >=0.2): this replicates the non-interactive
+        part of ``tiled.client.context.prompt_for_credentials`` — select the
+        internal/password provider, call ``password_grant`` with the supplied
+        credentials, then ``context.configure_auth(tokens, remember_me=True)``
+        to cache the token. This avoids tiled's terminal prompt entirely. The
+        provider mode/structure must be confirmed against the real NSLS-II
+        tiled instance at the beamline (spec §9, open item 1).
 
-        Uses ``client.login()`` (tiled >=0.2) to drive the interactive auth.
-        The exact prompt path depends on the server's auth mode: ``external``
-        (OAuth) prints a verification URL and auto-opens a browser to the IdP,
-        blocking until Duo is approved; ``internal``/``password`` prompts for
-        username/password on stdin. This must be confirmed against the real
-        NSLS-II tiled instance at the beamline (spec §9, open item 1).
-
-        Returns True if a token was obtained and cached to disk; False otherwise.
+        Returns True if a token was obtained and cached; False otherwise.
         """
         from tiled.client import from_uri
+        from tiled.client.context import password_grant
 
-        # tiled >=0.2 no longer accepts a `username` kwarg, and `from_uri`
-        # DEFERS auth — so we must call `client.login()` explicitly to trigger
-        # it. For the `external`/OAuth mode this opens a browser to the IdP and
-        # blocks until Duo is approved, then caches the token (remember_me).
         client = from_uri(TILED_URI)
-        client.login()
-        logger.info("NSLS-II tiled login complete (username hint: '{}')", username)
+        context = client.context
+        providers = context.server_info.authentication.providers
+        spec = next(
+            (p for p in providers if getattr(p, "mode", None) in ("internal", "password")),
+            providers[0],
+        )
+        tokens = password_grant(
+            context.http_client,
+            spec.links["auth_endpoint"],
+            spec.provider,
+            username,
+            password,
+        )
+        context.configure_auth(tokens, remember_me=True)
+        logger.info("NSLS-II tiled login complete for '{}'", username)
         return True
 
     async def authenticate(
@@ -74,12 +84,12 @@ class NSLS2TiledAuthProvider(AuthProvider):
         from lightfall.auth.policy import Role
         from lightfall.auth.session import Session, User
 
-        if not username:
-            logger.warning("NSLS-II login requires a username")
+        if not username or not password:
+            logger.warning("NSLS-II login requires a username and password")
             return None
 
         try:
-            ok = self._tiled_login(username)
+            ok = self._tiled_login(username, password)
         except Exception:
             logger.exception("NSLS-II tiled login failed")
             return None
@@ -123,7 +133,7 @@ class NSLS2AuthPlugin(AuthProviderPlugin):
 
     @property
     def requires_password(self) -> bool:
-        return False
+        return True
 
     def create_provider(self) -> NSLS2TiledAuthProvider:
         return NSLS2TiledAuthProvider()

@@ -146,6 +146,31 @@ class ProfileCollectionBackend(DeviceBackend):
             self._connected = False
             return False
 
+    def populate_from_namespace(self, namespace: dict[str, Any]) -> int:
+        """Build the device catalog from an already-populated namespace.
+
+        Used when the CMS profile-collection has been executed in Lightfall's
+        live IPython kernel (by the ProfileSessionBootstrapper) rather than in
+        a sandboxed namespace. The full profile is the source of truth.
+
+        Args:
+            namespace: A namespace dict (e.g. the kernel's ``shell.user_ns``).
+
+        Returns:
+            Number of ophyd devices extracted and cataloged.
+        """
+        from lightfall_endstation_cms.loader import extract_ophyd_devices
+
+        self._namespace = namespace
+        ophyd_devices = extract_ophyd_devices(namespace)
+        self._build_device_catalog(ophyd_devices)
+        self._connected = True
+        logger.info(
+            "CMS backend populated from live namespace: {} devices",
+            len(self._devices),
+        )
+        return len(self._devices)
+
     def disconnect(self) -> None:
         self._devices.clear()
         self._name_index.clear()

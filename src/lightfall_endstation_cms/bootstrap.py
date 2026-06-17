@@ -33,7 +33,9 @@ class ProfileSessionBootstrapper:
         """Numeric prefixes of profile scripts to skip.
 
         Honors the ``CMS_PROFILE_BLACKLIST`` env var (comma-separated prefixes),
-        which fully REPLACES :data:`DEFAULT_PROFILE_BLACKLIST` when set.
+        which fully REPLACES :data:`DEFAULT_PROFILE_BLACKLIST` when set. Setting
+        it empty (``CMS_PROFILE_BLACKLIST=``) clears the blacklist entirely, so
+        every profile script runs.
         """
         env = os.environ.get("CMS_PROFILE_BLACKLIST")
         if env is not None:

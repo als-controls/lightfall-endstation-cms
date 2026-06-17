@@ -89,6 +89,41 @@ class ProfileSessionBootstrapper:
         except Exception:
             logger.debug("_pump_events: processEvents failed", exc_info=True)
 
+    @staticmethod
+    def _make_progress(total: int):
+        """Modal progress dialog for the profile load, or None (headless/tests).
+
+        The profile load is long and runs on the main thread; a modal progress
+        dialog gives the operator visible feedback (and blocks stray input)
+        instead of a frozen, blank window.
+        """
+        try:
+            from PySide6.QtCore import Qt
+            from PySide6.QtWidgets import QApplication, QProgressDialog
+        except ImportError:
+            return None
+        if QApplication.instance() is None:
+            return None
+        try:
+            parent = None
+            try:
+                from lightfall.core import LFApplication
+
+                app = LFApplication.get_instance()
+                parent = app.main_window if app else None
+            except Exception:
+                parent = None
+            dlg = QProgressDialog("Loading CMS beamline profile…", None, 0, total, parent)
+            dlg.setWindowTitle("CMS profile")
+            dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+            dlg.setCancelButton(None)  # a partial profile load can't be safely interrupted
+            dlg.setMinimumDuration(0)
+            dlg.setValue(0)
+            return dlg
+        except Exception:
+            logger.debug("Could not create profile progress dialog", exc_info=True)
+            return None
+
     def run_profile(self, shell: Any) -> None:
         """Execute the profile scripts into the kernel shell (beamline)."""
         scripts = self._profile_scripts()
@@ -107,22 +142,33 @@ class ProfileSessionBootstrapper:
                 sys.path.append(startup_dir)
                 logger.info("Added profile startup dir to sys.path: {}", startup_dir)
 
-        for script in scripts:
-            logger.info("Running profile script into console: {}", script.name)
-            try:
-                source = script.read_text(encoding="utf-8")
-            except Exception:
-                logger.exception("Failed to read profile script {}", script.name)
-                continue
-            try:
-                shell.user_ns["__file__"] = str(script)
-                result = shell.run_cell(source, store_history=False)
-                if getattr(result, "error_in_exec", None) is not None:
-                    logger.error("Profile script {} raised: {}", script.name, result.error_in_exec)
-            except Exception:
-                logger.exception("Unexpected error running profile script {}", script.name)
-            # Keep the GUI alive/updating between scripts.
-            self._pump_events()
+        progress = self._make_progress(len(scripts))
+        try:
+            for i, script in enumerate(scripts):
+                if progress is not None:
+                    progress.setLabelText(f"Loading CMS profile: {script.name}")
+                    progress.setValue(i)  # modal QProgressDialog pumps events here
+                logger.info("Running profile script into console: {}", script.name)
+                try:
+                    source = script.read_text(encoding="utf-8")
+                except Exception:
+                    logger.exception("Failed to read profile script {}", script.name)
+                    continue
+                try:
+                    shell.user_ns["__file__"] = str(script)
+                    result = shell.run_cell(source, store_history=False)
+                    if getattr(result, "error_in_exec", None) is not None:
+                        logger.error(
+                            "Profile script {} raised: {}", script.name, result.error_in_exec
+                        )
+                except Exception:
+                    logger.exception("Unexpected error running profile script {}", script.name)
+                # Keep the GUI alive/updating between scripts.
+                self._pump_events()
+        finally:
+            if progress is not None:
+                progress.setValue(len(scripts))
+                progress.close()
 
     def adopt(self, namespace: dict[str, Any]) -> bool:
         """Adopt RE, devices, and the mig reading client from the namespace.

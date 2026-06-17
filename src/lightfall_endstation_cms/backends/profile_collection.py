@@ -6,14 +6,14 @@ separate happi JSON catalog.
 
 The profile-collection is the single source of truth for device definitions.
 
+Devices are populated by the ProfileSessionBootstrapper, which runs the FULL
+profile in Lightfall's console kernel after login and then calls
+``populate_from_namespace`` with the live namespace. ``connect()`` is a no-op
+(see its docstring) — it must NOT do its own sandboxed load.
+
 Usage:
     backend = ProfileCollectionBackend()
-    backend.connect()  # loads profile scripts, extracts devices
-
-    # Or with explicit path:
-    backend = ProfileCollectionBackend(
-        profile_path="/path/to/profile-collection/startup"
-    )
+    backend.populate_from_namespace(shell.user_ns)  # devices from the live ns
 """
 
 from __future__ import annotations
@@ -121,30 +121,19 @@ class ProfileCollectionBackend(DeviceBackend):
         return False  # Profile collection is read-only
 
     def connect(self) -> bool:
-        """Load the profile collection and extract devices."""
-        from lightfall_endstation_cms.loader import extract_ophyd_devices, load_profile
+        """No-op connect; devices come from the bootstrapper, not a sandboxed load.
 
-        try:
-            logger.info("Loading CMS profile-collection...")
-            self._namespace = load_profile(
-                profile_path=self._profile_path,
-                blacklist=self._blacklist,
-            )
-
-            ophyd_devices = extract_ophyd_devices(self._namespace)
-            self._build_device_catalog(ophyd_devices)
-            self._connected = True
-
-            logger.info(
-                "CMS profile-collection backend: {} devices loaded",
-                len(self._devices),
-            )
-            return True
-
-        except Exception:
-            logger.exception("Failed to load CMS profile-collection")
-            self._connected = False
-            return False
+        Returns True (the backend is "ready" to receive devices) WITHOUT running
+        the sandboxed ``load_profile()``. That sandboxed load would instantiate
+        ophyd ``EpicsSignalBase`` devices at plugin-load time (before login),
+        and the bootstrapper's later full profile run would then fail at
+        ``00-startup``'s ``EpicsSignalBase.set_defaults(...)`` — which "may only
+        be called before the first instance is created". The
+        ProfileSessionBootstrapper runs the full profile in the console kernel
+        and calls :meth:`populate_from_namespace` to fill the catalog.
+        """
+        self._connected = True
+        return True
 
     def populate_from_namespace(self, namespace: dict[str, Any]) -> int:
         """Build the device catalog from an already-populated namespace.

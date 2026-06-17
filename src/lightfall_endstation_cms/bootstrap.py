@@ -15,13 +15,14 @@ from lightfall.services.tiled_service import TiledService
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
 
-# Profile scripts skipped by default because their dependencies are unavailable
-# on the Lightfall runtime (Python 3.13): 24-area-detector-utilities imports
-# telnetlib (removed in Python 3.12+), and 55-archiver imports arvpyf (an
-# NSLS-II-internal package not published on PyPI). Matched by numeric filename
-# prefix. Override with the CMS_PROFILE_BLACKLIST env var (a comma-separated
-# list of prefixes, which REPLACES this default).
-DEFAULT_PROFILE_BLACKLIST = frozenset({"24", "55"})
+# Profile scripts skipped by default. 24-area-detector-utilities imports
+# telnetlib (removed in Python 3.12+) and 55-archiver imports arvpyf (an
+# NSLS-II-internal package not on PyPI) — both unavailable on the Lightfall
+# runtime. 99-caproto-test is a non-essential test script whose large bare-string
+# notes blob spams the console output. Matched by numeric filename prefix.
+# Override with the CMS_PROFILE_BLACKLIST env var (comma-separated prefixes,
+# which REPLACES this default).
+DEFAULT_PROFILE_BLACKLIST = frozenset({"24", "55", "99"})
 
 
 class ProfileSessionBootstrapper:
@@ -203,13 +204,14 @@ class ProfileSessionBootstrapper:
         n = self._backend.populate_from_namespace(namespace)
         logger.info("Adopted {} devices from profile namespace", n)
 
-        # 3) Reading client: the Duo-authed, cms/migration-scoped `mig`.
-        mig = namespace.get("mig")
-        if mig is not None:
-            TiledService.get_instance().adopt_client(mig, url=TILED_URI)
-            logger.info("Adopted 'mig' as the Tiled reading client")
+        # 3) Reading client: the Duo-authed cms/raw client `cat` (where the
+        #    historical data lives; cms/migration only has new-writer runs).
+        read_client = namespace.get("cat")
+        if read_client is not None:
+            TiledService.get_instance().adopt_client(read_client, url=TILED_URI)
+            logger.info("Adopted 'cat' (cms/raw) as the Tiled reading client")
         else:
-            logger.warning("Profile namespace has no 'mig' client; Tiled read not adopted")
+            logger.warning("Profile namespace has no 'cat' client; Tiled read not adopted")
 
         return True
 

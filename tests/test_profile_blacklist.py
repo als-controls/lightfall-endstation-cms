@@ -16,6 +16,7 @@ def _make_startup(tmp_path: Path) -> Path:
         "24-area-detector-utilities.py",
         "55-archiver.py",
         "97-user.py",
+        "99-caproto-test.py",
     ]:
         (tmp_path / name).write_text("# stub\n", encoding="utf-8")
     return tmp_path
@@ -32,9 +33,10 @@ def test_profile_scripts_skips_default_blacklist(tmp_path, monkeypatch):
 
     # Core scripts run, in order.
     assert names == ["00-startup.py", "10-motors.py", "97-user.py"]
-    # Blacklisted-by-default (unavailable deps on Py 3.13) are skipped.
+    # Blacklisted by default are skipped.
     assert "24-area-detector-utilities.py" not in names  # telnetlib
     assert "55-archiver.py" not in names  # arvpyf
+    assert "99-caproto-test.py" not in names  # non-essential test; output spam
 
 
 def test_cms_profile_blacklist_env_replaces_default(tmp_path, monkeypatch):

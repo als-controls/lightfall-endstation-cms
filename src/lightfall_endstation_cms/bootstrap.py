@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -66,7 +67,19 @@ class ProfileSessionBootstrapper:
 
     def run_profile(self, shell: Any) -> None:
         """Execute the profile scripts into the kernel shell (beamline)."""
-        for script in self._profile_scripts():
+        scripts = self._profile_scripts()
+
+        # Put the startup dir on sys.path so scripts that import a sibling
+        # script by filename resolve (e.g. 86-live-spec.py does
+        # importlib.import_module('85-suitcase-specfile')). The real beamline
+        # IPython profile makes the startup dir importable; replicate that.
+        if scripts:
+            startup_dir = str(scripts[0].parent)
+            if startup_dir not in sys.path:
+                sys.path.insert(0, startup_dir)
+                logger.info("Added profile startup dir to sys.path: {}", startup_dir)
+
+        for script in scripts:
             logger.info("Running profile script into console: {}", script.name)
             try:
                 source = script.read_text(encoding="utf-8")

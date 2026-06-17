@@ -46,6 +46,13 @@ beamline = [
     "nslsii",
     "pyepics",
     "databroker",
+    # databroker 2.x ships a v1 compat layer (`from databroker import Broker`,
+    # `databroker.assets.handlers`) that the CMS profile uses, but it does not
+    # declare these legacy runtime deps — add them explicitly.
+    "humanize",
+    "doct",
+    "pims",
+    "six",
     "redis-json-dict",
     "lmfit",
     "peakutils",

@@ -204,14 +204,15 @@ class ProfileSessionBootstrapper:
         n = self._backend.populate_from_namespace(namespace)
         logger.info("Adopted {} devices from profile namespace", n)
 
-        # 3) Reading client: the Duo-authed cms/raw client `cat` (where the
-        #    historical data lives; cms/migration only has new-writer runs).
-        read_client = namespace.get("cat")
+        # 3) Reading client: the Duo-authed cms/migration client `mig`.
+        #    (Which node actually holds the browsable data is still being
+        #    confirmed with beamline staff; default to `mig` for now.)
+        read_client = namespace.get("mig")
         if read_client is not None:
             TiledService.get_instance().adopt_client(read_client, url=TILED_URI)
-            logger.info("Adopted 'cat' (cms/raw) as the Tiled reading client")
+            logger.info("Adopted 'mig' (cms/migration) as the Tiled reading client")
         else:
-            logger.warning("Profile namespace has no 'cat' client; Tiled read not adopted")
+            logger.warning("Profile namespace has no 'mig' client; Tiled read not adopted")
 
         return True
 

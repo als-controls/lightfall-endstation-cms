@@ -121,19 +121,39 @@ class ProfileCollectionBackend(DeviceBackend):
         return False  # Profile collection is read-only
 
     def connect(self) -> bool:
-        """No-op connect; devices come from the bootstrapper, not a sandboxed load.
+        """Populate the catalog by sandbox-loading the profile's device files.
 
-        Returns True (the backend is "ready" to receive devices) WITHOUT running
-        the sandboxed ``load_profile()``. That sandboxed load would instantiate
-        ophyd ``EpicsSignalBase`` devices at plugin-load time (before login),
-        and the bootstrapper's later full profile run would then fail at
-        ``00-startup``'s ``EpicsSignalBase.set_defaults(...)`` — which "may only
-        be called before the first instance is created". The
-        ProfileSessionBootstrapper runs the full profile in the console kernel
-        and calls :meth:`populate_from_namespace` to fill the catalog.
+        This instantiates ophyd device *objects* (lazily — no live CA needed
+        just to list them), giving Lightfall a device catalog at startup even
+        before login. The bootstrapper's full profile run later refreshes the
+        catalog from the live namespace via :meth:`populate_from_namespace`
+        (which preserves this catalog if the full run produced no devices).
+
+        Note: this sandboxed load creates EpicsSignalBase instances, so the full
+        profile run's ``00-startup`` ``EpicsSignalBase.set_defaults(...)`` will
+        raise ("may only be called before the first instance") — that error is
+        caught per-script by the bootstrapper and is non-fatal (RE is created
+        before that line).
         """
-        self._connected = True
-        return True
+        from lightfall_endstation_cms.loader import extract_ophyd_devices, load_profile
+
+        try:
+            logger.info("Loading CMS profile-collection (device catalog)...")
+            self._namespace = load_profile(
+                profile_path=self._profile_path,
+                blacklist=self._blacklist,
+            )
+            ophyd_devices = extract_ophyd_devices(self._namespace)
+            self._build_device_catalog(ophyd_devices)
+            self._connected = True
+            logger.info(
+                "CMS profile-collection backend: {} devices loaded", len(self._devices)
+            )
+            return True
+        except Exception:
+            logger.exception("Failed to load CMS profile-collection")
+            self._connected = False
+            return False
 
     def populate_from_namespace(self, namespace: dict[str, Any]) -> int:
         """Build the device catalog from an already-populated namespace.
@@ -150,12 +170,26 @@ class ProfileCollectionBackend(DeviceBackend):
         """
         from lightfall_endstation_cms.loader import extract_ophyd_devices
 
+        ophyd_devices = extract_ophyd_devices(namespace)
+        if not ophyd_devices:
+            # The full profile run produced no devices — almost always because
+            # the profile failed to instantiate them (e.g. EPICS CA could not
+            # reach the IOCs). Do NOT clobber an existing catalog (e.g. the one
+            # built by connect()'s sandboxed load) with an empty one.
+            logger.warning(
+                "Live namespace yielded no ophyd devices; keeping existing "
+                "catalog of {} (profile devices likely failed to instantiate — "
+                "check EPICS connectivity)",
+                len(self._devices),
+            )
+            self._connected = True
+            return len(self._devices)
+
         self._devices.clear()
         self._name_index.clear()
         self._prefix_index.clear()
         self._ophyd_instances.clear()
         self._namespace = namespace
-        ophyd_devices = extract_ophyd_devices(namespace)
         self._build_device_catalog(ophyd_devices)
         self._connected = True
         logger.info(

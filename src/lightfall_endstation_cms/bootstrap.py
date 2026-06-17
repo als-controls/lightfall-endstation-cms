@@ -75,13 +75,19 @@ class ProfileSessionBootstrapper:
         progressively. No-op if there is no running QApplication (e.g. tests).
         """
         try:
+            from PySide6.QtCore import QEventLoop
             from PySide6.QtWidgets import QApplication
-
+        except ImportError:
+            return
+        try:
             app = QApplication.instance()
             if app is not None:
-                app.processEvents()
+                # Exclude user-input events: the profile isn't fully loaded yet
+                # (no adopted RunEngine), so a stray button click mid-load could
+                # act on uninitialized state. We only want paint/timer events.
+                app.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         except Exception:
-            pass
+            logger.debug("_pump_events: processEvents failed", exc_info=True)
 
     def run_profile(self, shell: Any) -> None:
         """Execute the profile scripts into the kernel shell (beamline)."""
@@ -118,11 +124,15 @@ class ProfileSessionBootstrapper:
             # Keep the GUI alive/updating between scripts.
             self._pump_events()
 
-    def adopt(self, namespace: dict[str, Any]) -> None:
+    def adopt(self, namespace: dict[str, Any]) -> bool:
         """Adopt RE, devices, and the mig reading client from the namespace.
 
         Must run AFTER the full profile load so that load-time
         ``RE.subscribe(...)`` / ``RE.md[...]`` wiring binds to the raw RE.
+
+        Returns True if the RunEngine was adopted (the core success condition;
+        a missing ``mig`` is logged but still counts as success), False if the
+        profile produced no ``RE`` so nothing could be adopted.
         """
         # If the profile failed before creating RE (e.g. configure_base could
         # not reach Redis), there is nothing to adopt — log and bail rather than
@@ -133,7 +143,7 @@ class ProfileSessionBootstrapper:
                 "Profile namespace has no 'RE' — profile load likely failed; "
                 "skipping RE/device/Tiled adoption"
             )
-            return
+            return False
 
         engine = get_engine()
 
@@ -155,7 +165,12 @@ class ProfileSessionBootstrapper:
         else:
             logger.warning("Profile namespace has no 'mig' client; Tiled read not adopted")
 
-    def bootstrap(self, shell: Any) -> None:
-        """Full handshake: run the profile, then adopt its objects."""
+        return True
+
+    def bootstrap(self, shell: Any) -> bool:
+        """Full handshake: run the profile, then adopt its objects.
+
+        Returns whether adoption succeeded (the RunEngine was adopted).
+        """
         self.run_profile(shell)
-        self.adopt(shell.user_ns)
+        return self.adopt(shell.user_ns)

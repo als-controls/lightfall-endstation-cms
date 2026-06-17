@@ -30,7 +30,7 @@ def test_adopt_wires_engine_devices_and_tiled(monkeypatch):
     backend = ProfileCollectionBackend()
     bootstrapper = ProfileSessionBootstrapper(backend)
 
-    bootstrapper.adopt(ns)
+    assert bootstrapper.adopt(ns) is True
 
     # Engine adopted the profile's RE.
     fake_engine.adopt.assert_called_once_with(fake_re)
@@ -58,7 +58,7 @@ def test_adopt_skips_gracefully_when_no_RE(monkeypatch):
 
     bootstrapper = ProfileSessionBootstrapper(ProfileCollectionBackend())
 
-    bootstrapper.adopt({})  # no "RE" — must not raise
+    assert bootstrapper.adopt({}) is False  # no "RE" — must not raise
 
     fake_engine.adopt.assert_not_called()
     fake_tiled.adopt_client.assert_not_called()

@@ -18,7 +18,7 @@ from lightfall.auth.providers.base import AuthProvider
 from lightfall.plugins.auth_provider_plugin import AuthProviderPlugin
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
-TILED_PROFILE = "nsls2"
+TILED_PROFILE = "nsls2"  # reserved for a future from_profile("nsls2")-based variant
 
 
 class NSLS2TiledAuthProvider(AuthProvider):
@@ -39,16 +39,19 @@ class NSLS2TiledAuthProvider(AuthProvider):
     def _tiled_login(self, username: str) -> bool:
         """Perform the interactive tiled login (Duo). BEAMLINE SEAM.
 
-        Returns True if a token was obtained and cached. Overridden in tests.
-        Finalize against the real provider type during Acceptance (spec §9).
+        THIS IS THE LIVE PRODUCTION IMPLEMENTATION.  Calling this method
+        against the real NSLS-II tiled server will immediately trigger an
+        interactive Duo push to the user's device and block until the push
+        is approved or times out.
 
-        Reference implementation (confirm at beamline)::
+        Tests must override this method to avoid hitting the real server.
 
-            from tiled.client import from_uri
-            client = from_uri(TILED_URI, username=username or None)
-            # touching the client forces auth; token caches to disk
-            _ = client.context
-            return True
+        The exact call that forces the auth handshake (``_ = client.context``)
+        has been confirmed to work in local testing but must be re-verified
+        against the actual NSLS-II tiled instance at the beamline before
+        go-live (spec §9, open item 1).
+
+        Returns True if a token was obtained and cached to disk; False otherwise.
         """
         from tiled.client import from_uri
 
@@ -84,7 +87,7 @@ class NSLS2TiledAuthProvider(AuthProvider):
             username=username,
             display_name=username,
             roles={Role.USER},
-            expires_at=datetime.now(UTC) + timedelta(days=7),
+            expires_at=datetime.now(UTC) + timedelta(days=7),  # PLACEHOLDER TTL — not derived from actual NSLS-II tiled token expiry; reconcile at beamline
         )
         return Session(user=user)
 

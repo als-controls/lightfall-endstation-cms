@@ -44,3 +44,12 @@ def test_authenticate_returns_none_on_login_failure():
 
     provider = _FailProvider()
     assert asyncio.run(provider.authenticate(username="rond")) is None
+
+
+def test_authenticate_returns_none_when_tiled_login_raises():
+    class _RaiseProvider(NSLS2TiledAuthProvider):
+        def _tiled_login(self, username):
+            raise RuntimeError("duo timeout")
+
+    provider = _RaiseProvider()
+    assert asyncio.run(provider.authenticate(username="rond")) is None

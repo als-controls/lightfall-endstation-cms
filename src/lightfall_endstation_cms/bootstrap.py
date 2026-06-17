@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,14 @@ from lightfall.services.tiled_service import TiledService
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
 
+# Profile scripts skipped by default because their dependencies are unavailable
+# on the Lightfall runtime (Python 3.13): 24-area-detector-utilities imports
+# telnetlib (removed in Python 3.12+), and 55-archiver imports arvpyf (an
+# NSLS-II-internal package not published on PyPI). Matched by numeric filename
+# prefix. Override with the CMS_PROFILE_BLACKLIST env var (a comma-separated
+# list of prefixes, which REPLACES this default).
+DEFAULT_PROFILE_BLACKLIST = frozenset({"24", "55"})
+
 
 class ProfileSessionBootstrapper:
     """Loads the CMS profile into the live kernel and adopts RE/devices/mig."""
@@ -20,15 +29,38 @@ class ProfileSessionBootstrapper:
     def __init__(self, backend: Any) -> None:
         self._backend = backend
 
+    def _blacklist(self) -> set[str]:
+        """Numeric prefixes of profile scripts to skip.
+
+        Honors the ``CMS_PROFILE_BLACKLIST`` env var (comma-separated prefixes),
+        which fully REPLACES :data:`DEFAULT_PROFILE_BLACKLIST` when set.
+        """
+        env = os.environ.get("CMS_PROFILE_BLACKLIST")
+        if env is not None:
+            return {s.strip() for s in env.split(",") if s.strip()}
+        return set(DEFAULT_PROFILE_BLACKLIST)
+
     def _profile_scripts(self) -> list[Path]:
-        """Ordered profile scripts to run. BEAMLINE SEAM (overridden in tests)."""
+        """Ordered profile scripts to run. BEAMLINE SEAM (overridden in tests).
+
+        Skips backup/experimental variants and any script whose numeric prefix
+        is blacklisted (see :meth:`_blacklist`) — e.g. modules needing deps that
+        are unavailable on the Lightfall runtime.
+        """
         from lightfall_endstation_cms.loader import _get_profile_path
 
         startup = _get_profile_path()
-        return sorted(
-            p for p in startup.glob("[0-9]*.py")
-            if not p.name.endswith((".pybak", ".bak")) and "_new." not in p.name
-        )
+        skip = self._blacklist()
+        scripts: list[Path] = []
+        for p in sorted(startup.glob("[0-9]*.py")):
+            if p.name.endswith((".pybak", ".bak")) or "_new." in p.name:
+                continue
+            prefix = p.name.split("-")[0]
+            if prefix in skip:
+                logger.info("Skipping blacklisted profile script: {}", p.name)
+                continue
+            scripts.append(p)
+        return scripts
 
     def run_profile(self, shell: Any) -> None:
         """Execute the profile scripts into the kernel shell (beamline)."""

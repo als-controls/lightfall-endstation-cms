@@ -35,6 +35,24 @@ dev = [
     "pytest>=7.0",
     "ruff>=0.1.0",
 ]
+# Runtime dependencies of the CMS profile-collection itself, installed into the
+# Lightfall venv so Lightfall can host the profile (run it in its console kernel
+# and adopt RE/devices/mig). Lightfall already provides bluesky, ophyd, tiled,
+# event-model, caproto, scipy, pandas, h5py, jinja2 etc.; this adds the rest.
+# Modules whose deps are NOT installable on Python 3.13 are blacklisted by the
+# ProfileSessionBootstrapper instead (24-area-detector-utilities -> telnetlib,
+# 55-archiver -> arvpyf).
+beamline = [
+    "nslsii",
+    "pyepics",
+    "databroker",
+    "redis-json-dict",
+    "lmfit",
+    "peakutils",
+    "pyOlog",
+    "paramiko",
+    "suitcase-specfile",
+]
 
 [project.entry-points."lightfall.plugins"]
 lightfall_endstation_cms = "lightfall_endstation_cms.manifest:manifest"

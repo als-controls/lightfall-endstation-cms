@@ -161,6 +161,10 @@ class ProfileCollectionBackend(DeviceBackend):
         """
         from lightfall_endstation_cms.loader import extract_ophyd_devices
 
+        self._devices.clear()
+        self._name_index.clear()
+        self._prefix_index.clear()
+        self._ophyd_instances.clear()
         self._namespace = namespace
         ophyd_devices = extract_ophyd_devices(namespace)
         self._build_device_catalog(ophyd_devices)

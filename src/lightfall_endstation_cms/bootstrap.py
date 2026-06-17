@@ -34,10 +34,18 @@ class ProfileSessionBootstrapper:
         """Execute the profile scripts into the kernel shell (beamline)."""
         for script in self._profile_scripts():
             logger.info("Running profile script into console: {}", script.name)
-            shell.user_ns["__file__"] = str(script)
-            result = shell.run_cell(script.read_text(encoding="utf-8"), store_history=False)
-            if getattr(result, "error_in_exec", None) is not None:
-                logger.error("Profile script {} raised: {}", script.name, result.error_in_exec)
+            try:
+                source = script.read_text(encoding="utf-8")
+            except Exception:
+                logger.exception("Failed to read profile script {}", script.name)
+                continue
+            try:
+                shell.user_ns["__file__"] = str(script)
+                result = shell.run_cell(source, store_history=False)
+                if getattr(result, "error_in_exec", None) is not None:
+                    logger.error("Profile script {} raised: {}", script.name, result.error_in_exec)
+            except Exception:
+                logger.exception("Unexpected error running profile script {}", script.name)
 
     def adopt(self, namespace: dict[str, Any]) -> None:
         """Adopt RE, devices, and the mig reading client from the namespace.

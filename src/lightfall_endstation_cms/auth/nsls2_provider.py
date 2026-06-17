@@ -18,7 +18,6 @@ from lightfall.auth.providers.base import AuthProvider
 from lightfall.plugins.auth_provider_plugin import AuthProviderPlugin
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
-TILED_PROFILE = "nsls2"  # reserved for a future from_profile("nsls2")-based variant
 
 
 class NSLS2TiledAuthProvider(AuthProvider):

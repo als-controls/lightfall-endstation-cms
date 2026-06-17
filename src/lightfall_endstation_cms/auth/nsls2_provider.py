@@ -19,6 +19,11 @@ from lightfall.auth.providers.base import AuthProvider
 from lightfall.plugins.auth_provider_plugin import AuthProviderPlugin
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
+# The profile-collection reads via from_profile("nsls2"); warm the token cache
+# through the SAME accessor so the cache key matches and the profile's later
+# from_profile("nsls2") reads ride it (rather than from_uri(TILED_URI), which
+# could key the cache differently if the profile URI normalizes differently).
+TILED_PROFILE = "nsls2"
 
 
 class NSLS2TiledAuthProvider(AuthProvider):
@@ -73,10 +78,12 @@ class NSLS2TiledAuthProvider(AuthProvider):
 
         Returns True if a token was obtained and cached; False otherwise.
         """
-        from tiled.client import from_uri
+        from tiled.client import from_profile
         from tiled.client.context import password_grant
 
-        client = from_uri(TILED_URI)
+        # Use the same profile the profile-collection reads with, so the token
+        # we cache here is the one its from_profile("nsls2") will reuse.
+        client = from_profile(TILED_PROFILE)
         context = client.context
         providers = context.server_info.authentication.providers
         spec = self._select_password_provider(providers)

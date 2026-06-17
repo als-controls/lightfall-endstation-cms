@@ -65,9 +65,29 @@ class ProfileSessionBootstrapper:
             scripts.append(p)
         return scripts
 
+    @staticmethod
+    def _pump_events() -> None:
+        """Let the GUI repaint / stay responsive during the long profile load.
+
+        run_profile runs synchronously on the main (GUI) thread, so without
+        pumping the event loop the main window shows but never paints until the
+        whole profile finishes. Pumping between scripts draws it and updates it
+        progressively. No-op if there is no running QApplication (e.g. tests).
+        """
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None:
+                app.processEvents()
+        except Exception:
+            pass
+
     def run_profile(self, shell: Any) -> None:
         """Execute the profile scripts into the kernel shell (beamline)."""
         scripts = self._profile_scripts()
+        # Paint the (already-shown) main window before the long load begins.
+        self._pump_events()
 
         # Put the startup dir on sys.path so scripts that import a sibling
         # script by filename resolve (e.g. 86-live-spec.py does
@@ -95,6 +115,8 @@ class ProfileSessionBootstrapper:
                     logger.error("Profile script {} raised: {}", script.name, result.error_in_exec)
             except Exception:
                 logger.exception("Unexpected error running profile script {}", script.name)
+            # Keep the GUI alive/updating between scripts.
+            self._pump_events()
 
     def adopt(self, namespace: dict[str, Any]) -> None:
         """Adopt RE, devices, and the mig reading client from the namespace.
@@ -102,11 +124,22 @@ class ProfileSessionBootstrapper:
         Must run AFTER the full profile load so that load-time
         ``RE.subscribe(...)`` / ``RE.md[...]`` wiring binds to the raw RE.
         """
+        # If the profile failed before creating RE (e.g. configure_base could
+        # not reach Redis), there is nothing to adopt — log and bail rather than
+        # raising a KeyError, so a partial load degrades gracefully.
+        run_engine = namespace.get("RE")
+        if run_engine is None:
+            logger.error(
+                "Profile namespace has no 'RE' — profile load likely failed; "
+                "skipping RE/device/Tiled adoption"
+            )
+            return
+
         engine = get_engine()
 
         # 1) Engine adopts the profile's RE (subscriptions/preprocessors intact),
         #    then rebind the console name `RE` to a GUI-safe proxy.
-        engine.adopt(namespace["RE"])
+        engine.adopt(run_engine)
         namespace["RE"] = ConsoleREProxy(engine)
         logger.info("Adopted profile RunEngine; console RE is now a ConsoleREProxy")
 

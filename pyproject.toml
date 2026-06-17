@@ -53,6 +53,11 @@ beamline = [
     "doct",
     "pims",
     "six",
+    # NSLS-II's Redis (info.cms.nsls2.bnl.gov) is old and rejects the RESP3
+    # HELLO handshake that redis-py >=6 sends unconditionally on connect
+    # ("unknown command HELLO"). Pin to 5.x, which only sends HELLO for RESP3
+    # (default is RESP2) and so works against the old server.
+    "redis>=5,<6",
     "redis-json-dict",
     "lmfit",
     "peakutils",

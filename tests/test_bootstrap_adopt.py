@@ -44,3 +44,21 @@ def test_adopt_wires_engine_devices_and_tiled(monkeypatch):
     fake_tiled.adopt_client.assert_called_once()
     args, kwargs = fake_tiled.adopt_client.call_args
     assert args[0] is fake_mig
+
+
+def test_adopt_skips_gracefully_when_no_RE(monkeypatch):
+    """If the profile failed before creating RE (e.g. Redis unreachable), adopt
+    must log and return without raising — not KeyError on namespace['RE']."""
+    fake_engine = MagicMock(name="engine")
+    fake_tiled = MagicMock(name="TiledService")
+
+    import lightfall_endstation_cms.bootstrap as boot
+    monkeypatch.setattr(boot, "get_engine", lambda: fake_engine)
+    monkeypatch.setattr(boot.TiledService, "get_instance", classmethod(lambda cls: fake_tiled))
+
+    bootstrapper = ProfileSessionBootstrapper(ProfileCollectionBackend())
+
+    bootstrapper.adopt({})  # no "RE" — must not raise
+
+    fake_engine.adopt.assert_not_called()
+    fake_tiled.adopt_client.assert_not_called()

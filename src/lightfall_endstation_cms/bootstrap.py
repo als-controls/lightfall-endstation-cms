@@ -204,16 +204,29 @@ class ProfileSessionBootstrapper:
         n = self._backend.populate_from_namespace(namespace)
         logger.info("Adopted {} devices from profile namespace", n)
 
-        # 3) Reading client: the Duo-authed cms/migration client `mig`.
-        #    (Which node actually holds the browsable data is still being
-        #    confirmed with beamline staff; default to `mig` for now.)
-        read_client = namespace.get("mig")
-        if read_client is not None:
-            TiledService.get_instance().adopt_client(read_client, url=TILED_URI)
-            logger.info("Adopted 'mig' (cms/migration) as the Tiled reading client")
+        # 3) Tiled client: adopt the write-scoped, data-visible client.
+        #    `mig`/`cat` use username=None -> interactive Duo (CannotPrompt
+        #    in the GUI) and, even when authed, only show runs whose
+        #    access_tags match the user, so they browse empty and cannot
+        #    write. `tiled_writing_client` (00-startup.py) is from_profile(
+        #    "nsls2", api_key=...)["cms"]["raw"]: it carries write:data/
+        #    write:metadata/create:node and, as a service principal, sees
+        #    all entries. TiledService drives its TiledWriter from this
+        #    same client, so adopting it fixes empty reads AND writes.
+        #    Fall back to `mig` if the profile predates the writing client.
+        client = namespace.get("tiled_writing_client")
+        label = "tiled_writing_client (cms/raw, write-scoped)"
+        if client is None:
+            client = namespace.get("mig")
+            label = "mig (cms/migration, legacy fallback)"
+        if client is not None:
+            TiledService.get_instance().adopt_client(client, url=TILED_URI)
+            logger.info("Adopted {} as the Tiled client", label)
         else:
-            logger.warning("Profile namespace has no 'mig' client; Tiled read not adopted")
-
+            logger.warning(
+                "Profile namespace has no 'tiled_writing_client' or 'mig'; "
+                "Tiled not adopted"
+            )
         return True
 
     def bootstrap(self, shell: Any) -> bool:

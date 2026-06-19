@@ -34,6 +34,7 @@ DEFAULT_BLACKLIST = {
     "01",  # AD v33 compatibility shim (imports from 00 namespace)
     "02",  # tiled-writer
     "03",  # async setup
+    "24",  # area-detector-utilities: imports telnetlib (removed in Python 3.13)
     "55",  # archiver
     "85",  # suitcase-specfile
     "86",  # live-spec
@@ -41,7 +42,9 @@ DEFAULT_BLACKLIST = {
     "91",  # fit_scan (needs RunEngine)
     "92",  # IPython magics
     "93",  # supplemental-data (needs RunEngine)
-    "94",  # sample system (huge, needs beamline object)
+    # 94 (sample system) is intentionally NOT blacklisted: it defines
+    # CoordinateSystem / get_default_stage that 991-modular-table needs, and
+    # its only module-level work is stg = SampleStage() using motors from 10.
     "95",  # sample-custom (needs 94)
     "96",  # automation (needs sample system)
     "97",  # user (needs everything)

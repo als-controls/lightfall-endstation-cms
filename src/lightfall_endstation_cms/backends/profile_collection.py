@@ -121,39 +121,32 @@ class ProfileCollectionBackend(DeviceBackend):
         return False  # Profile collection is read-only
 
     def connect(self) -> bool:
-        """Populate the catalog by sandbox-loading the profile's device files.
+        """Register the backend without loading the profile (deferred to login).
 
-        This instantiates ophyd device *objects* (lazily — no live CA needed
-        just to list them), giving Lightfall a device catalog at startup even
-        before login. The bootstrapper's full profile run later refreshes the
-        catalog from the live namespace via :meth:`populate_from_namespace`
-        (which preserves this catalog if the full run produced no devices).
+        The device catalog is **not** populated here. The CMS profile is heavy
+        and side-effecting — it instantiates ophyd devices (creating
+        ``EpicsSignalBase`` instances) and ``00-startup`` performs a Duo login —
+        and ``connect()`` runs at application startup, i.e. *before* the operator
+        logs in. Two problems followed from sandbox-loading it here:
 
-        Note: this sandboxed load creates EpicsSignalBase instances, so the full
-        profile run's ``00-startup`` ``EpicsSignalBase.set_defaults(...)`` will
-        raise ("may only be called before the first instance") — that error is
-        caught per-script by the bootstrapper and is non-fatal (RE is created
-        before that line).
+        * the whole profile executed before login (Duo prompt, Kafka/Redis), and
+        * the pre-created ``EpicsSignalBase`` instances made the post-login live
+          run's ``EpicsSignalBase.set_defaults(...)`` raise, halting
+          ``00-startup`` before ``assets_path`` was defined (breaking staging).
+
+        So we defer entirely: the catalog is populated after login by the
+        :class:`ProfileSessionBootstrapper`, which runs the profile in the live
+        IPython kernel and calls :meth:`populate_from_namespace`. The device tree
+        is empty until login, which is intended. Because the live run is then the
+        *first* to create ``EpicsSignalBase`` instances, ``set_defaults`` succeeds
+        and ``00-startup`` completes normally.
         """
-        from lightfall_endstation_cms.loader import extract_ophyd_devices, load_profile
-
-        try:
-            logger.info("Loading CMS profile-collection (device catalog)...")
-            self._namespace = load_profile(
-                profile_path=self._profile_path,
-                blacklist=self._blacklist,
-            )
-            ophyd_devices = extract_ophyd_devices(self._namespace)
-            self._build_device_catalog(ophyd_devices)
-            self._connected = True
-            logger.info(
-                "CMS profile-collection backend: {} devices loaded", len(self._devices)
-            )
-            return True
-        except Exception:
-            logger.exception("Failed to load CMS profile-collection")
-            self._connected = False
-            return False
+        self._connected = True
+        logger.info(
+            "CMS profile-collection backend registered; device catalog populates "
+            "after login (no pre-login profile load)"
+        )
+        return True
 
     def populate_from_namespace(self, namespace: dict[str, Any]) -> int:
         """Build the device catalog from an already-populated namespace.

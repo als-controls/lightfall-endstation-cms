@@ -151,6 +151,10 @@ class NSLS2AuthPlugin(AuthProviderPlugin):
         return "NSLS-II (CMS)"
 
     @property
+    def accent_color(self) -> str:
+        return "#2e7d32"  # green
+
+    @property
     def requires_username(self) -> bool:
         return True
 

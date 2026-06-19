@@ -41,6 +41,7 @@ def test_plugin_metadata():
     plugin = NSLS2AuthPlugin()
     assert plugin.name == "nsls2_tiled"
     assert plugin.display_name == "NSLS-II (CMS)"
+    assert plugin.accent_color == "#2e7d32"  # green login button
     assert plugin.requires_username is True
     # Password is collected (masked) in the login dialog and exchanged for a
     # tiled token; it is never stored by Lightfall.

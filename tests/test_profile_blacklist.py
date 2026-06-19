@@ -54,3 +54,17 @@ def test_cms_profile_blacklist_env_replaces_default(tmp_path, monkeypatch):
     assert "24-area-detector-utilities.py" in names
     assert "55-archiver.py" in names
     assert "00-startup.py" in names
+
+
+def test_loader_default_blacklist_runs_94_skips_24():
+    """Sandbox (loader) blacklist invariants.
+
+    24-area-detector-utilities imports telnetlib (removed in Python 3.13), so the
+    sandbox device-discovery load must skip it. 94-sample defines CoordinateSystem
+    and get_default_stage, which 991-modular-table needs, so it must NOT be skipped
+    (its only module-level work is ``stg = SampleStage()`` using motors from 10).
+    """
+    from lightfall_endstation_cms.loader import DEFAULT_BLACKLIST
+
+    assert "24" in DEFAULT_BLACKLIST
+    assert "94" not in DEFAULT_BLACKLIST

@@ -12,10 +12,14 @@ from lightfall_endstation_cms.bootstrap import ProfileSessionBootstrapper
 
 
 class CMSSessionTrigger:
-    """Arms a one-shot profile bootstrap on the first AUTHENTICATED transition."""
+    """Arms a one-shot profile bootstrap on the first AUTHENTICATED transition.
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    The bootstrap runs the profile's infrastructure scripts to adopt the live
+    ``RunEngine`` and the write-scoped Tiled client; devices come from happi, so
+    no device backend is involved here.
+    """
+
+    def __init__(self) -> None:
         self._done = False        # a bootstrap has SUCCEEDED — stop retrying
         self._running = False     # a bootstrap is in progress — block re-entry
 
@@ -53,7 +57,7 @@ class CMSSessionTrigger:
         logger.info("CMS login detected — running profile-collection bootstrap")
         self._running = True
         try:
-            ok = ProfileSessionBootstrapper(self._backend).bootstrap(shell)
+            ok = ProfileSessionBootstrapper().bootstrap(shell)
         except Exception:
             logger.exception("CMS profile bootstrap raised")
             ok = False

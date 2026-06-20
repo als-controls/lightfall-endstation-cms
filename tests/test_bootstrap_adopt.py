@@ -7,9 +7,6 @@ from unittest.mock import MagicMock
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from ophyd.sim import SynAxis
-
-from lightfall_endstation_cms.backends.profile_collection import ProfileCollectionBackend
 from lightfall_endstation_cms.bootstrap import ProfileSessionBootstrapper
 
 
@@ -27,24 +24,22 @@ def _patch_engine_and_tiled(monkeypatch, fake_re):
     return fake_engine, fake_tiled
 
 
-def test_adopt_wires_engine_devices_and_writing_client(monkeypatch):
-    # Stub namespace as if the profile had run.
+def test_adopt_wires_engine_and_writing_client(monkeypatch):
+    # Stub namespace as if the infra profile (00-03) had run.
     fake_re = MagicMock(name="RE")
     fake_mig = MagicMock(name="mig")
     fake_writer = MagicMock(name="tiled_writing_client")
+    fake_assets = MagicMock(name="assets_path")  # 00-startup's assets_path()
     ns = {
         "RE": fake_re,
         "mig": fake_mig,
         "tiled_writing_client": fake_writer,
-        "smx": SynAxis(name="smx"),
+        "assets_path": fake_assets,
     }
 
     fake_engine, fake_tiled = _patch_engine_and_tiled(monkeypatch, fake_re)
 
-    backend = ProfileCollectionBackend()
-    bootstrapper = ProfileSessionBootstrapper(backend)
-
-    assert bootstrapper.adopt(ns) is True
+    assert ProfileSessionBootstrapper().adopt(ns) is True
 
     # Engine adopted the profile's RE.
     fake_engine.adopt.assert_called_once_with(fake_re)
@@ -52,13 +47,36 @@ def test_adopt_wires_engine_devices_and_writing_client(monkeypatch):
     from lightfall.acquire.engine.console_proxy import ConsoleREProxy
 
     assert isinstance(ns["RE"], ConsoleREProxy)
-    # Devices populated from the live namespace.
-    assert backend.is_connected is True
-    assert backend.get_device_by_name("smx") is not None
     # The write-scoped client is adopted (not the anonymous/Duo-gated mig).
     fake_tiled.adopt_client.assert_called_once()
-    args, kwargs = fake_tiled.adopt_client.call_args
+    args, _ = fake_tiled.adopt_client.call_args
     assert args[0] is fake_writer
+
+
+def test_adopt_wires_assets_path_onto_device_modules(monkeypatch):
+    """adopt() lifts the profile's assets_path() onto the detector modules so the
+    happi-instantiated area detectors / Xspress3 can stage."""
+    fake_re = MagicMock(name="RE")
+    fake_assets = MagicMock(name="assets_path")
+    ns = {"RE": fake_re, "tiled_writing_client": MagicMock(), "assets_path": fake_assets}
+    _patch_engine_and_tiled(monkeypatch, fake_re)
+
+    # Stand-in device modules so the test doesn't require nslsii to import them.
+    # _wire_assets_path does `from lightfall_endstation_cms.devices import
+    # area_detectors, xspress3`; replacing the package in sys.modules makes that
+    # resolve to our fakes.
+    fake_ad = MagicMock(name="area_detectors")
+    fake_xs = MagicMock(name="xspress3")
+    monkeypatch.setitem(
+        sys.modules,
+        "lightfall_endstation_cms.devices",
+        MagicMock(area_detectors=fake_ad, xspress3=fake_xs),
+    )
+
+    ProfileSessionBootstrapper().adopt(ns)
+
+    assert fake_ad.assets_path is fake_assets
+    assert fake_xs.assets_path is fake_assets
 
 
 def test_adopt_falls_back_to_mig_without_writing_client(monkeypatch):
@@ -69,8 +87,7 @@ def test_adopt_falls_back_to_mig_without_writing_client(monkeypatch):
 
     _, fake_tiled = _patch_engine_and_tiled(monkeypatch, fake_re)
 
-    bootstrapper = ProfileSessionBootstrapper(ProfileCollectionBackend())
-    assert bootstrapper.adopt(ns) is True
+    assert ProfileSessionBootstrapper().adopt(ns) is True
 
     fake_tiled.adopt_client.assert_called_once()
     args, _ = fake_tiled.adopt_client.call_args
@@ -82,9 +99,7 @@ def test_adopt_skips_gracefully_when_no_RE(monkeypatch):
     must log and return without raising — not KeyError on namespace['RE']."""
     fake_engine, fake_tiled = _patch_engine_and_tiled(monkeypatch, MagicMock())
 
-    bootstrapper = ProfileSessionBootstrapper(ProfileCollectionBackend())
-
-    assert bootstrapper.adopt({}) is False  # no "RE" — must not raise
+    assert ProfileSessionBootstrapper().adopt({}) is False  # no "RE" — must not raise
 
     fake_engine.adopt.assert_not_called()
     fake_tiled.adopt_client.assert_not_called()

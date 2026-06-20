@@ -59,6 +59,53 @@ def test_lazy_init_does_not_eagerly_import_submodules():
         _ = devices.NoSuchDevice
 
 
+def test_slit_config_resolves_against_profile_startup(tmp_path, monkeypatch):
+    """A slit's relative ``config_file`` resolves against the profile-collection
+    startup dir (so Lightfall shares the beamline's saved positions), and an
+    existing preset file is read."""
+    pytest.importorskip("ophyd")
+    from lightfall_endstation_cms.devices import motors
+
+    monkeypatch.setattr(motors, "preset_base", None)
+    monkeypatch.setattr(
+        "lightfall_endstation_cms.loader._get_profile_path", lambda: tmp_path
+    )
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "s2_config.cfg").write_text(json.dumps({"open": [{"xc": 1.0}]}))
+
+    s2 = motors.MotorCenterAndGap(
+        "XF:11BMB-OP{Slt:2", name="s2", config_file="cfg/s2_config.cfg"
+    )
+
+    assert s2._resolved_config_path() == tmp_path / "cfg" / "s2_config.cfg"
+    # The preset file was actually read at construction.
+    assert s2._positions == {"open": [{"xc": 1.0}]}
+
+
+def test_slit_config_absolute_path_is_untouched(tmp_path, monkeypatch):
+    pytest.importorskip("ophyd")
+    from lightfall_endstation_cms.devices import motors
+
+    monkeypatch.setattr(motors, "preset_base", None)
+    abs_cfg = tmp_path / "abs_s1.cfg"
+    s1 = motors.MotorCenterAndGap(
+        "XF:11BMB-OP{Slt:1", name="s1", config_file=str(abs_cfg)
+    )
+    assert s1._resolved_config_path() == abs_cfg
+
+
+def test_preset_base_override(tmp_path, monkeypatch):
+    pytest.importorskip("ophyd")
+    from lightfall_endstation_cms.devices import motors
+
+    monkeypatch.setattr(motors, "preset_base", tmp_path)
+    s3 = motors.MotorCenterAndGap(
+        "XF:11BMB-OP{Slt:3", name="s3", config_file="cfg/s3_config.cfg"
+    )
+    assert s3._resolved_config_path() == tmp_path / "cfg" / "s3_config.cfg"
+
+
 def test_all_happi_device_classes_import_and_resolve():
     """Each device_class resolves to a real class. Requires ophyd + nslsii
     (the [beamline] extra), so skips where they are absent (e.g. CI/dev)."""

@@ -12,6 +12,35 @@ from pathlib import Path
 from ophyd import Component as Cpt
 from ophyd import Device, EpicsMotor, EpicsSignal
 
+# ---------------------------------------------------------------------------
+# Preset (saved-position) config base
+#
+# Slits carry a relative config_file (e.g. "cfg/s1_config.cfg"). Those preset
+# files live in the profile-collection's startup/cfg/ directory — a persistent
+# on-disk checkout, NOT package data — so they survive package reinstalls and
+# stay the single shared store the beamline reads and writes. Resolve relative
+# config paths against that startup dir (matching how the profile itself reads
+# "cfg/..."), instead of the Lightfall process CWD.
+#
+# ``preset_base`` is an optional override (path or callable returning a path);
+# when None the profile-collection startup dir is used, falling back to a
+# CWD-relative path if it can't be located (legacy behavior).
+# ---------------------------------------------------------------------------
+preset_base = None  # type: ignore[assignment]
+
+
+def _resolve_preset_base() -> Path | None:
+    """Directory that relative ``config_file`` paths resolve against, or None."""
+    if preset_base is not None:
+        base = preset_base() if callable(preset_base) else preset_base
+        return Path(base)
+    try:
+        from lightfall_endstation_cms.loader import _get_profile_path
+
+        return _get_profile_path()
+    except Exception:
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Configurable mixin
@@ -136,7 +165,13 @@ class Configurable:
     def _resolved_config_path(self) -> Path:
         if self._config_file is None:
             self._config_file = Path(f"{self.name}_config.cfg")
-        return Path(self._config_file)
+        path = Path(self._config_file)
+        if path.is_absolute():
+            return path
+        # Resolve relative preset paths against the profile-collection startup
+        # dir so Lightfall reads/writes the same saved positions as the beamline.
+        base = _resolve_preset_base()
+        return base / path if base is not None else path
 
     def _sync(self):
         for motor_name in self._config_motors:

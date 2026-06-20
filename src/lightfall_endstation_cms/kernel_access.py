@@ -103,9 +103,13 @@ def execute_in_console(code: str) -> bool:
 
     Output appears in the console widget and the call is recorded in history,
     so a panel button is indistinguishable from the operator typing the command.
-    Runs synchronously on the calling (GUI) thread — fine for quick actions;
-    long-running plans should be driven through the engine instead. Returns
-    False if no kernel is available.
+
+    ``run_cell`` itself runs on the GUI thread, but a SAM action that drives the
+    RunEngine stays responsive: the bootstrap rebinds ``RE`` to a
+    ``ConsoleREProxy``, which submits the plan to the engine's worker thread and
+    spins a nested Qt event loop while it runs (so the GUI keeps painting and
+    Abort still works). Only non-RunEngine busy work inside a SAM method would
+    run uninterrupted on the GUI thread. Returns False if no kernel is available.
     """
     shell = get_kernel_shell()
     if shell is None:

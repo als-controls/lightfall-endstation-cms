@@ -12,9 +12,12 @@ Scope (intentionally minimal scaffolding):
       beamtime's variable names don't need to be known);
     * snap / measure the selected sample via the console.
 
-Long-running actions currently run on the GUI thread via the console (like the
-operator typing them); routing measurement through the engine for a
-non-blocking, cancellable run is a follow-up.
+Long-running measurements stay responsive without extra work here: the SAM
+methods drive the RunEngine, which the bootstrap has rebound to a
+``ConsoleREProxy`` (engine worker thread + nested Qt event loop), so the GUI
+keeps painting and Abort still works while a measure runs. A small refinement
+worth a follow-up is disabling the action buttons while a command is in flight,
+to avoid re-entrant submissions from the panel.
 """
 
 from __future__ import annotations

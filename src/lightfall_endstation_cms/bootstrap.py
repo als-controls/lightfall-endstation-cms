@@ -301,9 +301,17 @@ class ProfileSessionBootstrapper:
         The SAM framework (``81-beam``/``94-sample``/…) references devices by
         their profile variable names (``smx``, ``pilatus2M``, …). The happi DB's
         item names are exactly those (see cms_happi.json), so each device is
-        bound under ``ns[name]``. Prefers the instance the backend already built
-        in the background (so the GUI catalog and the console share one object);
-        otherwise instantiates it via the happi client.
+        bound under ``ns[name]``. Since the backend runs in ``instantiate="none"``
+        mode (so 00-startup's ``set_defaults`` runs first), each device is built
+        here via the happi client.
+
+        Each freshly built instance is also pushed into the DeviceCatalog via
+        ``mark_device_live`` so the catalog/UI reflect that it is live instead of
+        staying UNKNOWN. These devices bypass the DeviceConnectionManager (which
+        only runs in the backend's "background" mode), so without this the GUI
+        device tree would never leave the UNKNOWN state. ``mark_device_live`` only
+        updates in-memory state + emits signals — it does NOT write through to the
+        happi JSON (unlike ``update_device``).
 
         Returns the number of devices injected.
         """
@@ -311,6 +319,8 @@ class ProfileSessionBootstrapper:
         if backend is None:
             logger.warning("No device backend supplied; skipping kernel device injection")
             return 0
+
+        catalog = self._device_catalog()
 
         injected = 0
         missing: list[str] = []
@@ -329,6 +339,17 @@ class ProfileSessionBootstrapper:
                 continue
             namespace[info.name] = obj
             injected += 1
+            # Notify the catalog so the device tree shows the live state instead
+            # of UNKNOWN (these instances never went through the connection
+            # manager). Best-effort: a missing/older catalog API must not abort
+            # injection.
+            if catalog is not None:
+                try:
+                    catalog.mark_device_live(info.id, obj)
+                except Exception:
+                    logger.debug(
+                        "mark_device_live failed for '{}'", info.name, exc_info=True
+                    )
 
         logger.info("Injected {} happi devices into the kernel namespace", injected)
         if missing:
@@ -338,6 +359,17 @@ class ProfileSessionBootstrapper:
                 len(missing), missing,
             )
         return injected
+
+    @staticmethod
+    def _device_catalog() -> Any | None:
+        """The DeviceCatalog singleton, or None if unavailable (e.g. tests)."""
+        try:
+            from lightfall.devices import DeviceCatalog
+
+            return DeviceCatalog.get_instance()
+        except Exception:
+            logger.debug("DeviceCatalog unavailable; injected devices won't update UI")
+            return None
 
     @staticmethod
     def _instantiate_device(backend: Any, name: str) -> Any | None:

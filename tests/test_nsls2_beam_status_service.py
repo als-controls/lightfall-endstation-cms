@@ -123,3 +123,27 @@ def test_introspection_reports_values():
     assert data["beam_current_mA"] == 401.0
     assert data["beam_available"] is True
     assert data["is_running"] == s.is_running
+
+
+class _Resp:
+    def __init__(self, data):
+        self.data = data
+
+
+def test_decode_handles_response_shapes():
+    # array-wrapped float
+    result = NSLS2BeamStatusService._decode("pv", _Resp([401.0]))
+    assert result == 401.0
+
+    # array-wrapped bytes → decoded str
+    result = NSLS2BeamStatusService._decode("pv", _Resp([b"Open"]))
+    assert isinstance(result, str)
+    assert result == "Open"
+
+    # array-wrapped plain str
+    result = NSLS2BeamStatusService._decode("pv", _Resp(["Operations"]))
+    assert result == "Operations"
+
+    # bare scalar (int): data[0] raises TypeError → fallback to data itself
+    result = NSLS2BeamStatusService._decode("pv", _Resp(5))
+    assert result == 5

@@ -30,16 +30,21 @@ from lightfall.ui.annotations import Decimals, DeviceFilter, Range, Unit
 Detector = Any
 Motor = Any
 
-# Fit options: Lightfall fitter names (peak models) plus simple statistics.
-FitKind = Literal["gaussian", "lorentzian", "voigt", "com", "max", "min", "none"]
-_PEAK_MODELS = {"gaussian", "lorentzian", "voigt"}
+# Fit options: simple statistics plus Lightfall fitter names. Model fits
+# (peak: gaussian/lorentzian/voigt; edge: step) defer to Lightfall's fitting
+# subsystem, so any fitter it registers with a "center" parameter works here.
+FitKind = Literal[
+    "gaussian", "lorentzian", "voigt", "step", "com", "max", "min", "none"
+]
+_STATISTICS = {"com", "max", "min"}
 
 
 def _compute_center(xs: np.ndarray, ys: np.ndarray, fit: str) -> float | None:
     """Return the centering position for the scan, or None if not determinable.
 
-    Peak models defer to Lightfall's fitting subsystem (shared with the viz
-    fit panel); the simple statistics are computed directly.
+    Simple statistics (com/max/min) are computed directly; any other name is
+    treated as a Lightfall fitter (e.g. gaussian/lorentzian/voigt peak or the
+    "step" error-function edge) and must expose a "center" parameter.
     """
     fit = (fit or "none").lower()
     if fit in ("none", ""):
@@ -53,15 +58,18 @@ def _compute_center(xs: np.ndarray, ys: np.ndarray, fit: str) -> float | None:
         return float(xs[int(np.argmax(ys))])
     if fit == "min":
         return float(xs[int(np.argmin(ys))])
-    if fit in _PEAK_MODELS:
-        from lightfall.visualization.fitting.fitters import get_fitter
 
-        result = get_fitter(fit).fit(xs, ys)
-        if result.success and "center" in result.parameters:
-            return float(result.parameters["center"])
-        logger.warning("fit_scan: {} fit did not converge ({})", fit, result.info)
+    from lightfall.visualization.fitting.fitters import get_fitter
+
+    try:
+        fitter = get_fitter(fit)
+    except ValueError:
+        logger.warning("fit_scan: unknown fit '{}'; not centering", fit)
         return None
-    logger.warning("fit_scan: unknown fit '{}'; not centering", fit)
+    result = fitter.fit(xs, ys)
+    if result.success and "center" in result.parameters:
+        return float(result.parameters["center"])
+    logger.warning("fit_scan: {} fit did not converge ({})", fit, result.info)
     return None
 
 
@@ -173,6 +181,54 @@ def _resolve_target_field(detectors: list[Any], target_field: str | None, plan_n
     return _core_resolver(detectors, target_field, plan_name)
 
 
+def fit_edge(
+    detectors: Annotated[list[Detector], DeviceFilter(category="detector")],
+    motor: Annotated[Motor, DeviceFilter(category="motor")],
+    span: Annotated[float, Unit("mm"), Decimals(4), Range(0.0, 1e6)] = 1.0,
+    num: Annotated[int, Range(3, 10001)] = 11,
+    move_to_center: bool = True,
+    exposure_time: Annotated[float, Unit("s"), Range(0.0, 3600.0)] | None = None,
+    target_field: str | None = None,
+    wait_time: Annotated[float, Unit("s"), Range(0.0, 60.0)] = 0.0,
+    md: dict | None = None,
+) -> Generator[Any, Any, dict]:
+    """Scan across an edge and move the motor to the 50% (half-cut) point.
+
+    Convenience wrapper over :func:`fit_scan` using the error-function step
+    model, for knife-edge / absorption-edge alignment. The signed step height
+    means it handles both rising and falling edges; the motor is moved to the
+    fitted edge center (the 50% point).
+
+    Args:
+        detectors: Detectors to read at each point.
+        motor: Motor to scan.
+        span: Total scan width, centered on the current position (mm).
+        num: Number of scan points.
+        move_to_center: Move the motor to the fitted edge when found.
+        exposure_time: Per-point exposure (uses current setting if None).
+        target_field: Detector field to fit (defaults to the first hinted field).
+        wait_time: Settle time after each move before reading.
+        md: Extra run metadata.
+
+    Returns:
+        Dict with ``center`` (edge position or None), ``field``, ``x``, ``y``.
+    """
+    return (
+        yield from fit_scan(
+            detectors,
+            motor,
+            span=span,
+            num=num,
+            fit="step",
+            move_to_center=move_to_center,
+            exposure_time=exposure_time,
+            target_field=target_field,
+            wait_time=wait_time,
+            md={**(md or {}), "plan_header": "fit_edge"},
+        )
+    )
+
+
 class FitScanPlan(PlanPlugin):
     """Contributes the CMS ``fit_scan`` alignment plan."""
 
@@ -186,3 +242,18 @@ class FitScanPlan(PlanPlugin):
 
     def get_plan_function(self):
         return fit_scan
+
+
+class FitEdgePlan(PlanPlugin):
+    """Contributes the CMS ``fit_edge`` (knife-edge alignment) plan."""
+
+    @property
+    def name(self) -> str:
+        return "fit_edge"
+
+    @property
+    def category(self) -> str:
+        return "alignment"
+
+    def get_plan_function(self):
+        return fit_edge

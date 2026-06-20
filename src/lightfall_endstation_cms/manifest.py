@@ -39,5 +39,26 @@ manifest = PluginManifest(
             import_path="lightfall_endstation_cms.plans:FitEdgePlan",
             metadata={"beamline": "11-BM CMS"},
         ),
+        PluginEntry(
+            type_name="panel",
+            name="cms_sample",
+            import_path="lightfall_endstation_cms.panels:CMSSamplePanelPlugin",
+            metadata={"beamline": "11-BM CMS"},
+            preload=True,
+        ),
+        PluginEntry(
+            type_name="panel",
+            name="cms_holder",
+            import_path="lightfall_endstation_cms.panels:CMSHolderPanelPlugin",
+            metadata={"beamline": "11-BM CMS"},
+            preload=True,
+        ),
+        PluginEntry(
+            type_name="panel",
+            name="cms_beamline",
+            import_path="lightfall_endstation_cms.panels:CMSBeamlinePanelPlugin",
+            metadata={"beamline": "11-BM CMS"},
+            preload=True,
+        ),
     ],
 )

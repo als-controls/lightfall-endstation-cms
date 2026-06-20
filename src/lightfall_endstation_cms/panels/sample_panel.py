@@ -59,8 +59,8 @@ class CMSSamplePanel(CMSKernelPanel):
     )
 
     def _setup_ui(self) -> None:
-        self._status = QLabel()
-        self._layout.addWidget(self._status)
+        self._status_label = QLabel()
+        self._layout.addWidget(self._status_label)
 
         self._samples = QListWidget()
         self._samples.currentItemChanged.connect(lambda *_: self._update_actions())
@@ -104,11 +104,11 @@ class CMSSamplePanel(CMSKernelPanel):
         samples = kernel_access.find_kernel_objects(*_SAMPLE_BASES) if loaded else {}
 
         if not loaded:
-            self._status.setText(
+            self._status_label.setText(
                 "SAM framework not loaded — log in to the beamline to host it."
             )
         else:
-            self._status.setText(
+            self._status_label.setText(
                 f"SAM loaded · {len(samples)} sample(s) in the kernel"
             )
 

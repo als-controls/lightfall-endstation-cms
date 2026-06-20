@@ -43,8 +43,8 @@ class CMSBeamlinePanel(CMSKernelPanel):
     )
 
     def _setup_ui(self) -> None:
-        self._status = QLabel()
-        self._layout.addWidget(self._status)
+        self._status_label = QLabel()
+        self._layout.addWidget(self._status_label)
 
         grid = QGridLayout()
         grid.addWidget(QLabel("Beam (shutter):"), 0, 0)
@@ -95,13 +95,13 @@ class CMSBeamlinePanel(CMSKernelPanel):
     def refresh(self) -> None:
         loaded = kernel_access.sam_is_loaded()
         if not loaded:
-            self._status.setText("SAM framework not loaded — log in to the beamline.")
+            self._status_label.setText("SAM framework not loaded — log in to the beamline.")
             self._beam_value.setText(_UNKNOWN)
             self._mode_value.setText(_UNKNOWN)
             self._set_controls_enabled(False)
             return
 
-        self._status.setText("SAM loaded")
+        self._status_label.setText("SAM loaded")
         self._beam_value.setText(self._read_beam_state())
         self._mode_value.setText(self._read_mode())
         self._set_controls_enabled(True)

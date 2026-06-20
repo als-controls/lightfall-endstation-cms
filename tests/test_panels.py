@@ -89,6 +89,29 @@ def test_panel_plugin_and_manifest():
 
 # --- panel (needs a QApplication) ---------------------------------------
 
+def test_panels_do_not_clobber_basepanel_status(qapp, monkeypatch):
+    """Regression: a panel's status QLabel must not shadow BasePanel.status.
+
+    BasePanel sets self._status = PanelStatus and the docking manager reads
+    panel.status; a panel that reassigned self._status to a QLabel caused a
+    KeyError in the sidebar status coloring. Every CMS panel's .status must
+    remain a PanelStatus.
+    """
+    from lightfall.ui.panels.base import PanelStatus
+
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: False)
+    monkeypatch.setattr(kernel_access, "find_kernel_objects", lambda *a: {})
+    monkeypatch.setattr(kernel_access, "get_kernel_object", lambda name: None)
+
+    from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
+    from lightfall_endstation_cms.panels.holder_panel import CMSHolderPanel
+    from lightfall_endstation_cms.panels.sample_panel import CMSSamplePanel
+
+    for cls in (CMSSamplePanel, CMSHolderPanel, CMSBeamlinePanel):
+        panel = cls()
+        assert isinstance(panel.status, PanelStatus), f"{cls.__name__}.status clobbered"
+
+
 def test_panel_not_loaded_state(qapp, monkeypatch):
     monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: False)
     monkeypatch.setattr(kernel_access, "find_kernel_objects", lambda *a: {})
@@ -96,7 +119,7 @@ def test_panel_not_loaded_state(qapp, monkeypatch):
     from lightfall_endstation_cms.panels.sample_panel import CMSSamplePanel
 
     panel = CMSSamplePanel()
-    assert "not loaded" in panel._status.text().lower()
+    assert "not loaded" in panel._status_label.text().lower()
     assert panel._samples.count() == 0
     assert panel._snap_btn.isEnabled() is False
 
@@ -114,7 +137,7 @@ def test_panel_lists_samples_and_enables_actions(qapp, monkeypatch):
 
     panel = CMSSamplePanel()
     assert panel._samples.count() == 2
-    assert "2 sample" in panel._status.text()
+    assert "2 sample" in panel._status_label.text()
 
     panel._samples.setCurrentRow(0)  # select "sam"
     assert panel._snap_btn.isEnabled() is True
@@ -214,7 +237,7 @@ def test_beamline_panel_not_loaded(qapp, monkeypatch):
     from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
 
     panel = CMSBeamlinePanel()
-    assert "not loaded" in panel._status.text().lower()
+    assert "not loaded" in panel._status_label.text().lower()
     assert panel._open_btn.isEnabled() is False
     assert panel._beam_value.text() == "—"
 

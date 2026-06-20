@@ -65,7 +65,7 @@ def test_sam_phase_runs_framework_not_device_definers(tmp_path, monkeypatch):
 
 def test_default_keep_sets():
     assert DEFAULT_INFRA_KEEP == frozenset({"00", "01", "02", "03"})
-    assert DEFAULT_SAM_KEEP == frozenset({"81", "82", "94", "95", "96", "97", "991"})
+    assert DEFAULT_SAM_KEEP == frozenset({"90", "81", "82", "94", "95", "96", "97", "991"})
 
 
 def test_env_overrides_replace_defaults(tmp_path, monkeypatch):

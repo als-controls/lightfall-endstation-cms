@@ -40,8 +40,8 @@ class CMSHolderPanel(CMSKernelPanel):
 
     def _setup_ui(self) -> None:
         self._holders: dict[str, Any] = {}
-        self._status = QLabel()
-        self._layout.addWidget(self._status)
+        self._status_label = QLabel()
+        self._layout.addWidget(self._status_label)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Holder:"))
@@ -76,9 +76,9 @@ class CMSHolderPanel(CMSKernelPanel):
         self._holders = kernel_access.find_kernel_objects(*_HOLDER_BASES) if loaded else {}
 
         if not loaded:
-            self._status.setText("SAM framework not loaded — log in to the beamline.")
+            self._status_label.setText("SAM framework not loaded — log in to the beamline.")
         else:
-            self._status.setText(f"{len(self._holders)} holder(s) in the kernel")
+            self._status_label.setText(f"{len(self._holders)} holder(s) in the kernel")
 
         current = self._holder_combo.currentText()
         self._holder_combo.blockSignals(True)

@@ -127,6 +127,7 @@ class NSLS2BeamStatusService(QObject):
         self._pvs: list = []
         self._subs: list = []
         self._connected_pvs: set[str] = set()
+        self._conn_lock = threading.Lock()
         self._running = False
         self._last_error: str | None = None
 
@@ -148,7 +149,10 @@ class NSLS2BeamStatusService(QObject):
 
     @property
     def current_data(self) -> NSLS2BeamData | None:
-        return self._data
+        with self._data_lock:
+            if self._data is None:
+                return None
+            return replace(self._data)
 
     @property
     def is_connected(self) -> bool:
@@ -232,34 +236,44 @@ class NSLS2BeamStatusService(QObject):
 
     def _on_connection(self, pv, state) -> None:
         name = getattr(pv, "name", None)
-        was = bool(self._connected_pvs)
-        if state == "connected":
-            self._connected_pvs.add(name)
-        else:
-            self._connected_pvs.discard(name)
-        now = bool(self._connected_pvs)
-        if now != was:
-            if not now:
-                self._last_error = "EPICS PVs disconnected"
+        if name is None:
+            return
+        should_emit = False
+        emit_value = False
+        with self._conn_lock:
+            was = bool(self._connected_pvs)
+            if state == "connected":
+                self._connected_pvs.add(name)
             else:
-                self._last_error = None
-            self.connection_changed.emit(now)
+                self._connected_pvs.discard(name)
+            now = bool(self._connected_pvs)
+            if now != was:
+                if not now:
+                    self._last_error = "EPICS PVs disconnected"
+                else:
+                    self._last_error = None
+                should_emit = True
+                emit_value = now
+        if should_emit:
+            self.connection_changed.emit(emit_value)
 
     def get_introspection_data(self) -> dict[str, Any]:
+        with self._data_lock:
+            snap = replace(self._data) if self._data is not None else None
         result: dict[str, Any] = {
             "is_connected": self.is_connected,
             "is_running": self._running,
         }
-        if self._data is not None:
-            result["beam_current_mA"] = self._data.beam_current
-            result["beam_available"] = self._data.beam_available
-            result["mode"] = self._data.mode
-            result["lifetime_hours"] = self._data.lifetime
-            result["topoff_state"] = self._data.topoff_state
-            result["next_injection"] = self._data.next_injection
-            result["ops_message"] = self._data.ops_message
-            if self._data.timestamp:
-                result["timestamp"] = self._data.timestamp.isoformat()
+        if snap is not None:
+            result["beam_current_mA"] = snap.beam_current
+            result["beam_available"] = snap.beam_available
+            result["mode"] = snap.mode
+            result["lifetime_hours"] = snap.lifetime
+            result["topoff_state"] = snap.topoff_state
+            result["next_injection"] = snap.next_injection
+            result["ops_message"] = snap.ops_message
+            if snap.timestamp:
+                result["timestamp"] = snap.timestamp.isoformat()
         if self._last_error:
             result["last_error"] = self._last_error
         return result

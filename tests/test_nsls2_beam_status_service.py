@@ -69,7 +69,6 @@ def test_start_is_idempotent_and_subscribes_all_pvs():
     s.start()  # second call must be a no-op
     assert s.is_running is True
     assert len(_FakeContext.instances) == 1
-    ctx = _FakeContext.instances[0]
     # one PV per ALL_PVS, each with a monitor callback registered
     assert len(s._subs) == len(svc.ALL_PVS)
 

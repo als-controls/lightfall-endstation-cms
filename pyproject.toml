@@ -28,6 +28,9 @@ dependencies = [
     "lightfall",
     "loguru",
     "numpy",
+    # Devices are defined in a happi JSON DB shipped with this package
+    # (devices/cms_happi.json) and loaded via Lightfall's HappiBackend.
+    "happi",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +74,9 @@ lightfall_endstation_cms = "lightfall_endstation_cms.manifest:manifest"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/lightfall_endstation_cms"]
+# Ship the happi device database as package data (not a .py file, so make the
+# inclusion explicit rather than relying on default file selection).
+force-include = { "src/lightfall_endstation_cms/devices/cms_happi.json" = "lightfall_endstation_cms/devices/cms_happi.json" }
 
 [tool.ruff]
 line-length = 100

@@ -15,53 +15,59 @@ from lightfall.services.tiled_service import TiledService
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
 
-# Profile scripts skipped by default. 24-area-detector-utilities imports
-# telnetlib (removed in Python 3.12+) and 55-archiver imports arvpyf (an
-# NSLS-II-internal package not on PyPI) — both unavailable on the Lightfall
-# runtime. 99-caproto-test is a non-essential test script whose large bare-string
-# notes blob spams the console output. Matched by numeric filename prefix.
-# Override with the CMS_PROFILE_BLACKLIST env var (comma-separated prefixes,
-# which REPLACES this default).
-DEFAULT_PROFILE_BLACKLIST = frozenset({"24", "55", "99"})
+# Profile scripts to RUN, by numeric filename prefix. Devices now come from the
+# happi backend (see plugin.py), so the profile is no longer the device source
+# and we run ONLY its infrastructure scripts:
+#
+#   00-startup          RunEngine (nslsii.configure_base), tiled_writing_client,
+#                       tiled_reading_client/mig, assets_path(), set_defaults
+#   01-ad33_tmp         area-detector v3.3 compatibility shim
+#   02-tiled-writer     subscribes the Tiled document writer to the RunEngine
+#   03-async            async/RunEngine plumbing
+#
+# Everything from 10 onward defines devices, plans or helpers that are being
+# migrated to Lightfall (happi devices today; Lightfall plans next), and is no
+# longer executed in the kernel. Running them would also fail, since the device
+# globals they reference (e.g. 94-sample needs 10-motors) are no longer created.
+#
+# Override with the CMS_PROFILE_KEEP env var (comma-separated prefixes, which
+# fully REPLACES this default) — e.g. to temporarily run a migrated-but-not-yet
+# script during a transition.
+DEFAULT_PROFILE_KEEP = frozenset({"00", "01", "02", "03"})
 
 
 class ProfileSessionBootstrapper:
-    """Loads the CMS profile into the live kernel and adopts RE/devices/mig."""
+    """Runs the CMS profile's infra scripts in the live kernel and adopts the
+    RunEngine + write-scoped Tiled client. Devices come from happi, not here."""
 
-    def __init__(self, backend: Any) -> None:
-        self._backend = backend
+    def _keep(self) -> set[str]:
+        """Numeric prefixes of profile scripts to run.
 
-    def _blacklist(self) -> set[str]:
-        """Numeric prefixes of profile scripts to skip.
-
-        Honors the ``CMS_PROFILE_BLACKLIST`` env var (comma-separated prefixes),
-        which fully REPLACES :data:`DEFAULT_PROFILE_BLACKLIST` when set. Setting
-        it empty (``CMS_PROFILE_BLACKLIST=``) clears the blacklist entirely, so
-        every profile script runs.
+        Honors the ``CMS_PROFILE_KEEP`` env var (comma-separated prefixes),
+        which fully REPLACES :data:`DEFAULT_PROFILE_KEEP` when set.
         """
-        env = os.environ.get("CMS_PROFILE_BLACKLIST")
+        env = os.environ.get("CMS_PROFILE_KEEP")
         if env is not None:
             return {s.strip() for s in env.split(",") if s.strip()}
-        return set(DEFAULT_PROFILE_BLACKLIST)
+        return set(DEFAULT_PROFILE_KEEP)
 
     def _profile_scripts(self) -> list[Path]:
-        """Ordered profile scripts to run. BEAMLINE SEAM (overridden in tests).
+        """Ordered infra profile scripts to run. BEAMLINE SEAM (overridden in tests).
 
         Skips backup/experimental variants and any script whose numeric prefix
-        is blacklisted (see :meth:`_blacklist`) — e.g. modules needing deps that
-        are unavailable on the Lightfall runtime.
+        is not in the keep-set (see :meth:`_keep`).
         """
         from lightfall_endstation_cms.loader import _get_profile_path
 
         startup = _get_profile_path()
-        skip = self._blacklist()
+        keep = self._keep()
         scripts: list[Path] = []
         for p in sorted(startup.glob("[0-9]*.py")):
             if p.name.endswith((".pybak", ".bak")) or "_new." in p.name:
                 continue
             prefix = p.name.split("-")[0]
-            if prefix in skip:
-                logger.info("Skipping blacklisted profile script: {}", p.name)
+            if prefix not in keep:
+                logger.debug("Skipping non-infra profile script: {}", p.name)
                 continue
             scripts.append(p)
         return scripts
@@ -172,10 +178,11 @@ class ProfileSessionBootstrapper:
                 progress.close()
 
     def adopt(self, namespace: dict[str, Any]) -> bool:
-        """Adopt RE, devices, and the mig reading client from the namespace.
+        """Adopt the RunEngine and the write-scoped Tiled client from the namespace.
 
-        Must run AFTER the full profile load so that load-time
+        Must run AFTER the infra profile load so that load-time
         ``RE.subscribe(...)`` / ``RE.md[...]`` wiring binds to the raw RE.
+        Devices are NOT adopted here — they come from the happi backend.
 
         Returns True if the RunEngine was adopted (the core success condition;
         a missing ``mig`` is logged but still counts as success), False if the
@@ -200,9 +207,14 @@ class ProfileSessionBootstrapper:
         namespace["RE"] = ConsoleREProxy(engine)
         logger.info("Adopted profile RunEngine; console RE is now a ConsoleREProxy")
 
-        # 2) Devices come from the live namespace.
-        n = self._backend.populate_from_namespace(namespace)
-        logger.info("Adopted {} devices from profile namespace", n)
+        # 2) Wire the detectors' assets_path. The happi-instantiated area
+        #    detectors / Xspress3 need a callable returning the per-proposal
+        #    assets directory before they can stage. 00-startup defines
+        #    assets_path() (a closure over the live RE.md cycle/data_session);
+        #    lift it onto the device modules so happi-built detectors can write.
+        #    Best-effort: if nslsii is absent the modules won't import, but
+        #    RE/Tiled adoption must still succeed.
+        self._wire_assets_path(namespace)
 
         # 3) Tiled client: adopt the write-scoped, data-visible client.
         #    `mig`/`cat` use username=None -> interactive Duo (CannotPrompt
@@ -229,8 +241,37 @@ class ProfileSessionBootstrapper:
             )
         return True
 
+    @staticmethod
+    def _wire_assets_path(namespace: dict[str, Any]) -> None:
+        """Point the device modules' ``assets_path`` at the profile's callable.
+
+        ``area_detectors`` and ``xspress3`` expose a module-level
+        ``assets_path`` hook that must be a callable before any detector stages
+        (see those modules). 00-startup defines ``assets_path()``; share it so
+        the happi-instantiated detectors write to the correct per-proposal
+        directory. Best-effort: importing the device modules needs ``nslsii``,
+        so a failure here must not abort RE/Tiled adoption.
+        """
+        assets_path = namespace.get("assets_path")
+        if not callable(assets_path):
+            logger.warning(
+                "Profile namespace has no callable 'assets_path'; detector "
+                "staging will raise until it is set"
+            )
+            return
+        try:
+            from lightfall_endstation_cms.devices import area_detectors, xspress3
+
+            area_detectors.assets_path = assets_path
+            xspress3.assets_path = assets_path
+            logger.info("Wired assets_path onto area_detectors and xspress3 modules")
+        except Exception:
+            logger.exception(
+                "Could not wire assets_path onto device modules (nslsii missing?)"
+            )
+
     def bootstrap(self, shell: Any) -> bool:
-        """Full handshake: run the profile, then adopt its objects.
+        """Full handshake: run the infra profile, then adopt RE + Tiled.
 
         Returns whether adoption succeeded (the RunEngine was adopted).
         """

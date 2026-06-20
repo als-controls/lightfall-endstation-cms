@@ -9,12 +9,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
 
 
+def _run_inline(monkeypatch):
+    """Make invoke_in_main_thread run its callable synchronously in the test."""
+    import lightfall_endstation_cms.session_trigger as st
+
+    monkeypatch.setattr(st, "invoke_in_main_thread", lambda fn, *a, **k: fn(*a, **k))
+
+
 def test_trigger_runs_bootstrap_once_on_success(monkeypatch):
     fake_shell = MagicMock(name="shell")
     fake_bootstrapper = MagicMock(name="bootstrapper")
     fake_bootstrapper.bootstrap.return_value = True  # success
 
     import lightfall_endstation_cms.session_trigger as st
+    _run_inline(monkeypatch)
     monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: fake_shell)
     monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda backend=None: fake_bootstrapper)
 
@@ -34,6 +42,7 @@ def test_trigger_retries_when_bootstrap_fails(monkeypatch):
     fake_bootstrapper.bootstrap.return_value = False  # failed load
 
     import lightfall_endstation_cms.session_trigger as st
+    _run_inline(monkeypatch)
     monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: fake_shell)
     monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda backend=None: fake_bootstrapper)
     monkeypatch.setattr(CMSSessionTrigger, "_notify_failure", staticmethod(lambda: None))
@@ -44,3 +53,25 @@ def test_trigger_retries_when_bootstrap_fails(monkeypatch):
 
     assert fake_bootstrapper.bootstrap.call_count == 2
     assert trigger._done is False
+
+
+def test_bootstrap_is_marshaled_to_main_thread(monkeypatch):
+    """Regression: the bootstrap must be dispatched via invoke_in_main_thread,
+    NOT run inline on the (background) thread that emits state_changed.
+
+    state_changed is emitted from the login worker thread; running the bootstrap
+    there creates QWidgets / imports qtconsole off the GUI thread, which
+    deadlocks on the import lock against the main-thread proactive panel init.
+    """
+    import lightfall_endstation_cms.session_trigger as st
+
+    dispatched: list = []
+    monkeypatch.setattr(st, "invoke_in_main_thread", lambda fn, *a, **k: dispatched.append(fn))
+    # If the trigger (wrongly) ran inline, this would execute:
+    monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: (_ for _ in ()).throw(AssertionError("ran inline")))
+
+    trigger = CMSSessionTrigger()
+    trigger._on_state_changed(st.AuthState.AUTHENTICATED)
+
+    # The work was handed to the main-thread invoker, not executed inline.
+    assert dispatched == [trigger._run_bootstrap]

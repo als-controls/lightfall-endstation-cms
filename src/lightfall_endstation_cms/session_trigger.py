@@ -7,6 +7,7 @@ from typing import Any
 from loguru import logger
 
 from lightfall.auth.session import AuthState, SessionManager
+from lightfall.utils.threads import invoke_in_main_thread
 
 from lightfall_endstation_cms.bootstrap import ProfileSessionBootstrapper
 
@@ -47,10 +48,28 @@ class CMSSessionTrigger:
     def _on_state_changed(self, new_state: Any, old_state: Any = None) -> None:
         # SessionManager.state_changed emits (new_state, old_state); the second
         # arg is optional so tests can call with just the new state.
-        # _running guards re-entrancy: the bootstrap pumps the Qt event loop,
-        # which could redeliver this signal mid-run.
         if self._done or self._running or new_state != AuthState.AUTHENTICATED:
             return
+
+        # CRITICAL: this signal is emitted from the BACKGROUND login thread
+        # (SessionManager.attach_session runs in a QThreadFuture and calls
+        # _set_state(AUTHENTICATED) there). The bootstrap creates QWidgets (the
+        # IPython panel), starts an in-process kernel and imports qtconsole, and
+        # pumps the Qt event loop — all of which MUST happen on the GUI thread.
+        # Running it on the login thread (a) is illegal Qt cross-thread widget
+        # creation and (b) races the main thread's proactive panel-init import
+        # of qtconsole, deadlocking on the Python import lock (observed on ws5:
+        # MainThread stuck in importlib acquire under IPythonPanel._setup_ui).
+        # Marshal the whole bootstrap onto the main thread.
+        invoke_in_main_thread(self._run_bootstrap)
+
+    def _run_bootstrap(self) -> None:
+        """Run the profile bootstrap. MUST execute on the GUI thread."""
+        # Re-check on the main thread: several AUTHENTICATED emits could have
+        # been marshaled before the first ran.
+        if self._done or self._running:
+            return
+
         shell = self._get_shell()
         if shell is None:
             logger.error("CMS bootstrap: console shell unavailable; cannot run profile")

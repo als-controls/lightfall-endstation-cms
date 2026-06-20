@@ -118,3 +118,74 @@ def test_click_opens_status_page(qapp, qtbot, monkeypatch):
     plugin = _make(qtbot, fake)
     plugin.on_clicked()
     assert opened["url"] == "https://www.bnl.gov/nsls2/operating-status.php"
+
+
+def test_toast_on_beam_restored(qapp, qtbot, monkeypatch):
+    """Reverse transition: unavailable -> available fires a success toast."""
+
+    class _Toast:
+        def __init__(self):
+            self.calls = []
+
+        def success(self, *a, **k):
+            self.calls.append(("success", a))
+
+        def warning(self, *a, **k):
+            self.calls.append(("warning", a))
+
+    toast = _Toast()
+    monkeypatch.setattr(
+        "lightfall.ui.toast.ToastManager.get_instance", classmethod(lambda cls: toast)
+    )
+    data_unavailable = NSLS2BeamData(beam_current=0.0, lifetime=0.0, beam_available=False)
+    fake = _FakeService(connected=True, data=data_unavailable)
+    _install(monkeypatch, fake)
+    plugin = _make(qtbot, fake)
+    plugin.update()  # first paint: establishes baseline (unavailable), no toast
+    assert toast.calls == []
+    fake._data = NSLS2BeamData(beam_current=401.0, lifetime=12.5, beam_available=True)
+    plugin.update()  # transition unavailable -> available
+    assert toast.calls and toast.calls[-1][0] == "success"
+
+
+def test_connect_then_disconnect_signals(qapp, qtbot, monkeypatch):
+    """connect_signals then disconnect_signals does not raise; slots are severed."""
+    from unittest.mock import MagicMock
+    from PySide6.QtCore import QObject as _QObject
+    from PySide6.QtCore import Signal as _Signal
+
+    class _FakeThemeManager(_QObject):
+        colors_changed = _Signal()
+
+        def __init__(self):
+            super().__init__()
+            self.colors = MagicMock()
+
+    fake_theme = _FakeThemeManager()
+    monkeypatch.setattr(
+        "lightfall.ui.theme.ThemeManager.get_instance",
+        classmethod(lambda cls: fake_theme),
+    )
+
+    data = NSLS2BeamData(beam_current=350.0, lifetime=8.0, beam_available=True)
+    fake = _FakeService(connected=True, data=data)
+    _install(monkeypatch, fake)
+    plugin = _make(qtbot, fake)
+
+    # Establish known button text via update before touching signals
+    plugin.update()
+    text_after_update = plugin._button.text()
+
+    # connect then disconnect must not raise
+    plugin.connect_signals()
+    plugin.disconnect_signals()
+
+    # Capture text right after disconnect
+    text_before_emit = plugin._button.text()
+
+    # Emit status_changed with data that would produce a *different* text
+    different_data = NSLS2BeamData(beam_current=999.0, lifetime=99.9, beam_available=True)
+    fake.status_changed.emit(different_data)
+
+    # Slot was disconnected, so button text must be unchanged
+    assert plugin._button.text() == text_before_emit

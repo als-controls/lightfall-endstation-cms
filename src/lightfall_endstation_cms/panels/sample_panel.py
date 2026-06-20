@@ -15,9 +15,9 @@ Scope (intentionally minimal scaffolding):
 Long-running measurements stay responsive without extra work here: the SAM
 methods drive the RunEngine, which the bootstrap has rebound to a
 ``ConsoleREProxy`` (engine worker thread + nested Qt event loop), so the GUI
-keeps painting and Abort still works while a measure runs. A small refinement
-worth a follow-up is disabling the action buttons while a command is in flight,
-to avoid re-entrant submissions from the panel.
+keeps painting and Abort still works while a measure runs. Action buttons are
+disabled while a command is in flight (via :class:`CMSKernelPanel`) so an
+impatient second click can't re-enter the busy kernel.
 """
 
 from __future__ import annotations
@@ -30,18 +30,18 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QPushButton,
-    QWidget,
 )
 
-from lightfall.ui.panels.base import BasePanel, PanelMetadata
+from lightfall.ui.panels.base import PanelMetadata
 
 from lightfall_endstation_cms import kernel_access
+from lightfall_endstation_cms.panels._base import CMSKernelPanel
 
 # SAM base classes whose instances are "samples" (MRO match, no import needed).
 _SAMPLE_BASES = ("Sample_Generic",)
 
 
-class CMSSamplePanel(BasePanel):
+class CMSSamplePanel(CMSKernelPanel):
     """Lists kernel-resident CMS samples and snaps/measures the selected one."""
 
     panel_metadata: ClassVar[PanelMetadata] = PanelMetadata(
@@ -57,10 +57,6 @@ class CMSSamplePanel(BasePanel):
         sidebar_group="top",
         auto_hide=True,
     )
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.refresh()
 
     def _setup_ui(self) -> None:
         self._status = QLabel()
@@ -96,6 +92,9 @@ class CMSSamplePanel(BasePanel):
         self._layout.addLayout(actions)
 
         self._layout.addStretch(1)
+
+    def _action_widgets(self):
+        return [self._snap_btn, self._measure_btn]
 
     # --- behaviour -------------------------------------------------------
 
@@ -136,13 +135,13 @@ class CMSSamplePanel(BasePanel):
     def _on_snap(self) -> None:
         name = self._current_sample_name()
         if name:
-            kernel_access.execute_in_console(f"{name}.snap()")
+            self.run_guarded(f"{name}.snap()")
 
     def _on_measure(self) -> None:
         name = self._current_sample_name()
         if name:
             exposure = self._exposure.value()
-            kernel_access.execute_in_console(f"{name}.measure({exposure})")
+            self.run_guarded(f"{name}.measure({exposure})")
 
 
 def _exact_match():

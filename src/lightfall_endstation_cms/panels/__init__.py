@@ -23,4 +23,17 @@ class CMSSamplePanelPlugin(PanelPlugin):
         return CMSSamplePanel
 
 
-__all__ = ["CMSSamplePanelPlugin"]
+class CMSHolderPanelPlugin(PanelPlugin):
+    """Contributes the CMS Holder panel."""
+
+    @property
+    def name(self) -> str:
+        return "cms_holder"
+
+    def get_panel_class(self) -> type[BasePanel]:
+        from lightfall_endstation_cms.panels.holder_panel import CMSHolderPanel
+
+        return CMSHolderPanel
+
+
+__all__ = ["CMSSamplePanelPlugin", "CMSHolderPanelPlugin"]

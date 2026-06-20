@@ -123,3 +123,73 @@ def test_panel_lists_samples_and_enables_actions(qapp, monkeypatch):
     assert ran == ["sam.measure(2.5)"]
     panel._on_snap()
     assert ran[-1] == "sam.snap()"
+
+
+def test_action_buttons_disabled_while_command_in_flight(qapp, monkeypatch):
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: True)
+    monkeypatch.setattr(kernel_access, "find_kernel_objects", lambda *a: {"sam": _MySample()})
+
+    from lightfall_endstation_cms.panels.sample_panel import CMSSamplePanel
+
+    panel = CMSSamplePanel()
+    panel._samples.setCurrentRow(0)
+    enabled_during = {}
+
+    def fake_exec(code):
+        # The guard must have disabled the action buttons before dispatch.
+        enabled_during["snap"] = panel._snap_btn.isEnabled()
+        enabled_during["measure"] = panel._measure_btn.isEnabled()
+        return True
+
+    monkeypatch.setattr(kernel_access, "execute_in_console", fake_exec)
+    panel._on_snap()
+
+    assert enabled_during == {"snap": False, "measure": False}
+    # After the command returns, refresh() restores the correct enabled state.
+    assert panel._snap_btn.isEnabled() is True
+
+
+# --- holder panel -------------------------------------------------------
+
+class _Holder:
+    pass
+
+
+class _CapillaryHolder(_Holder):  # MRO includes "_Holder"
+    def __init__(self, samples):
+        self._samples = samples
+
+
+def test_holder_plugin_and_manifest():
+    from lightfall_endstation_cms.panels import CMSHolderPanelPlugin
+
+    assert CMSHolderPanelPlugin().name == "cms_holder"
+    from lightfall_endstation_cms.manifest import manifest
+
+    entry = next(p for p in manifest.plugins if p.name == "cms_holder")
+    assert entry.type_name == "panel"
+    assert entry.import_path.endswith("panels:CMSHolderPanelPlugin")
+
+
+def test_holder_panel_maps_slots_and_navigates(qapp, monkeypatch):
+    holder = _CapillaryHolder({1: SimpleNamespace(name="s1"), 3: SimpleNamespace(name="s3")})
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: True)
+    # Match the holder panel's base-class filter.
+    monkeypatch.setattr(
+        kernel_access, "find_kernel_objects",
+        lambda *bases: {"hol": holder} if "_Holder" in bases else {},
+    )
+    ran = []
+    monkeypatch.setattr(kernel_access, "execute_in_console", lambda code: ran.append(code) or True)
+
+    from lightfall_endstation_cms.panels import holder_panel
+    monkeypatch.setattr(holder_panel, "_HOLDER_BASES", ("_Holder",))
+
+    panel = holder_panel.CMSHolderPanel()
+    assert panel._holder_combo.currentText() == "hol"
+    assert [panel._slots.item(i).text() for i in range(panel._slots.count())] == ["1: s1", "3: s3"]
+
+    panel._slots.setCurrentRow(1)  # slot 3
+    assert panel._goto_btn.isEnabled() is True
+    panel._on_goto()
+    assert ran == ["hol.gotoSample(3)"]

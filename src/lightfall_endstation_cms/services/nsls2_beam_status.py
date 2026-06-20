@@ -7,8 +7,12 @@ to the Lightfall status bar.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, replace
 from datetime import datetime
+from typing import Any
+
+from PySide6.QtCore import QObject, Signal
 
 # --- Source PVs -----------------------------------------------------------
 
@@ -98,3 +102,164 @@ def apply_pv_value(data: NSLS2BeamData, pv_name: str, value: object) -> None:
         data.ops_message_1 = str(value)
     elif pv_name == OPS_MSG2_PV:
         data.ops_message_2 = str(value)
+
+
+class NSLS2BeamStatusService(QObject):
+    """Singleton service polling NSLS-II ring status PVs over Channel Access.
+
+    Opens a caproto threading-client Context, subscribes to the status PVs,
+    and emits Qt signals as values arrive. caproto callbacks fire on worker
+    threads; the cross-thread signal emission is delivered on the GUI thread
+    by Qt's auto (queued) connection.
+    """
+
+    status_changed = Signal(object)  # NSLS2BeamData
+    connection_changed = Signal(bool)
+
+    _instance: NSLS2BeamStatusService | None = None
+    _singleton_lock = threading.RLock()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._data: NSLS2BeamData | None = None
+        self._data_lock = threading.RLock()
+        self._context = None
+        self._pvs: list = []
+        self._subs: list = []
+        self._connected_pvs: set[str] = set()
+        self._running = False
+        self._last_error: str | None = None
+
+    @classmethod
+    def get_instance(cls) -> NSLS2BeamStatusService:
+        if cls._instance is None:
+            with cls._singleton_lock:
+                if cls._instance is None:
+                    cls._instance = cls()
+        return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        with cls._singleton_lock:
+            if cls._instance is not None:
+                cls._instance.stop()
+                cls._instance.deleteLater()
+            cls._instance = None
+
+    @property
+    def current_data(self) -> NSLS2BeamData | None:
+        return self._data
+
+    @property
+    def is_connected(self) -> bool:
+        return bool(self._connected_pvs)
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    @property
+    def last_error(self) -> str | None:
+        return self._last_error
+
+    def start(self) -> None:
+        """Open the caproto context and subscribe to all status PVs."""
+        if self._running:
+            return
+        try:
+            from caproto.threading.client import Context
+
+            self._context = Context()
+            self._pvs = list(
+                self._context.get_pvs(
+                    *ALL_PVS, connection_state_callback=self._on_connection
+                )
+            )
+            self._subs = []
+            for pv in self._pvs:
+                data_type = "string" if pv.name in STRING_PVS else None
+                sub = pv.subscribe(data_type=data_type)
+                sub.add_callback(self._on_monitor)
+                self._subs.append(sub)
+            self._running = True
+        except Exception as e:  # pragma: no cover - defensive, off-network
+            self._last_error = str(e)
+            self._running = False
+
+    def stop(self) -> None:
+        if not self._running and self._context is None:
+            return
+        if self._context is not None:
+            try:
+                self._context.disconnect()
+            except Exception:
+                pass
+        self._context = None
+        self._pvs = []
+        self._subs = []
+        self._connected_pvs.clear()
+        self._running = False
+
+    # -- caproto callbacks (fire on worker threads) --------------------
+
+    def _on_monitor(self, sub, response) -> None:
+        try:
+            value = self._decode(sub.pv.name, response)
+        except Exception:  # pragma: no cover - defensive decode guard
+            return
+        self._on_value(sub.pv.name, value)
+
+    @staticmethod
+    def _decode(pv_name: str, response) -> object:
+        """Decode a caproto monitor response into a Python scalar."""
+        data = getattr(response, "data", response)
+        try:
+            value = data[0]
+        except (TypeError, IndexError, KeyError):
+            value = data
+        if isinstance(value, bytes):
+            value = value.decode(errors="replace")
+        return value
+
+    def _on_value(self, pv_name: str, value: object) -> None:
+        with self._data_lock:
+            if self._data is None:
+                self._data = NSLS2BeamData()
+            apply_pv_value(self._data, pv_name, value)
+            self._data.timestamp = datetime.now()
+            snapshot = replace(self._data)
+        self.status_changed.emit(snapshot)
+
+    def _on_connection(self, pv, state) -> None:
+        name = getattr(pv, "name", None)
+        was = bool(self._connected_pvs)
+        if state == "connected":
+            self._connected_pvs.add(name)
+        else:
+            self._connected_pvs.discard(name)
+        now = bool(self._connected_pvs)
+        if now != was:
+            if not now:
+                self._last_error = "EPICS PVs disconnected"
+            else:
+                self._last_error = None
+            self.connection_changed.emit(now)
+
+    def get_introspection_data(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "is_connected": self.is_connected,
+            "is_running": self._running,
+        }
+        if self._data is not None:
+            result["beam_current_mA"] = self._data.beam_current
+            result["beam_available"] = self._data.beam_available
+            result["mode"] = self._data.mode
+            result["lifetime_hours"] = self._data.lifetime
+            result["topoff_state"] = self._data.topoff_state
+            result["next_injection"] = self._data.next_injection
+            result["ops_message"] = self._data.ops_message
+            if self._data.timestamp:
+                result["timestamp"] = self._data.timestamp.isoformat()
+        if self._last_error:
+            result["last_error"] = self._last_error
+        return result

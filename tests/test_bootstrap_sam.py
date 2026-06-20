@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -19,10 +20,26 @@ class _FakeBackend:
         return self._devices
 
 
-def test_inject_devices_binds_instances_under_profile_names():
-    d1 = SimpleNamespace(name="smx", _ophyd_device=object())
-    d2 = SimpleNamespace(name="pilatus2M", _ophyd_device=object())
+class _SpyCatalog:
+    """Records mark_device_live calls."""
+
+    def __init__(self):
+        self.marked: list = []
+
+    def mark_device_live(self, device_id, obj, **kw):
+        self.marked.append((device_id, obj))
+        return True
+
+
+def _dev(name, obj):
+    return SimpleNamespace(name=name, id=uuid4(), _ophyd_device=obj)
+
+
+def test_inject_devices_binds_instances_under_profile_names(monkeypatch):
+    d1 = _dev("smx", object())
+    d2 = _dev("pilatus2M", object())
     bs = ProfileSessionBootstrapper(_FakeBackend([d1, d2]))
+    monkeypatch.setattr(bs, "_device_catalog", lambda: None)
 
     ns: dict = {}
     assert bs._inject_devices(ns) == 2
@@ -30,7 +47,18 @@ def test_inject_devices_binds_instances_under_profile_names():
     assert ns["pilatus2M"] is d2._ophyd_device
 
 
-def test_inject_devices_falls_back_to_happi_client():
+def test_inject_devices_notifies_catalog(monkeypatch):
+    d1 = _dev("smx", object())
+    spy = _SpyCatalog()
+    bs = ProfileSessionBootstrapper(_FakeBackend([d1]))
+    monkeypatch.setattr(bs, "_device_catalog", lambda: spy)
+
+    bs._inject_devices({})
+    # The injected device is pushed into the catalog so the UI leaves UNKNOWN.
+    assert spy.marked == [(d1.id, d1._ophyd_device)]
+
+
+def test_inject_devices_falls_back_to_happi_client(monkeypatch):
     obj = object()
 
     class _Result:
@@ -41,8 +69,9 @@ def test_inject_devices_falls_back_to_happi_client():
         def search(self, name=None):
             return [_Result()]
 
-    dev = SimpleNamespace(name="bsx", _ophyd_device=None)
+    dev = _dev("bsx", None)
     bs = ProfileSessionBootstrapper(_FakeBackend([dev], client=_Client()))
+    monkeypatch.setattr(bs, "_device_catalog", lambda: None)
 
     ns: dict = {}
     bs._inject_devices(ns)

@@ -36,4 +36,17 @@ class CMSHolderPanelPlugin(PanelPlugin):
         return CMSHolderPanel
 
 
-__all__ = ["CMSSamplePanelPlugin", "CMSHolderPanelPlugin"]
+class CMSBeamlinePanelPlugin(PanelPlugin):
+    """Contributes the CMS Beamline (shutter/mode) panel."""
+
+    @property
+    def name(self) -> str:
+        return "cms_beamline"
+
+    def get_panel_class(self) -> type[BasePanel]:
+        from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
+
+        return CMSBeamlinePanel
+
+
+__all__ = ["CMSSamplePanelPlugin", "CMSHolderPanelPlugin", "CMSBeamlinePanelPlugin"]

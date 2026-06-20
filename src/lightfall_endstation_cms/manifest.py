@@ -53,5 +53,12 @@ manifest = PluginManifest(
             metadata={"beamline": "11-BM CMS"},
             preload=True,
         ),
+        PluginEntry(
+            type_name="panel",
+            name="cms_beamline",
+            import_path="lightfall_endstation_cms.panels:CMSBeamlinePanelPlugin",
+            metadata={"beamline": "11-BM CMS"},
+            preload=True,
+        ),
     ],
 )

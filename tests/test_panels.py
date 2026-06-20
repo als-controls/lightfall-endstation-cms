@@ -193,3 +193,74 @@ def test_holder_panel_maps_slots_and_navigates(qapp, monkeypatch):
     assert panel._goto_btn.isEnabled() is True
     panel._on_goto()
     assert ran == ["hol.gotoSample(3)"]
+
+
+# --- beamline panel -----------------------------------------------------
+
+def test_beamline_plugin_and_manifest():
+    from lightfall_endstation_cms.panels import CMSBeamlinePanelPlugin
+
+    assert CMSBeamlinePanelPlugin().name == "cms_beamline"
+    from lightfall_endstation_cms.manifest import manifest
+
+    entry = next(p for p in manifest.plugins if p.name == "cms_beamline")
+    assert entry.type_name == "panel"
+    assert entry.import_path.endswith("panels:CMSBeamlinePanelPlugin")
+
+
+def test_beamline_panel_not_loaded(qapp, monkeypatch):
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: False)
+
+    from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
+
+    panel = CMSBeamlinePanel()
+    assert "not loaded" in panel._status.text().lower()
+    assert panel._open_btn.isEnabled() is False
+    assert panel._beam_value.text() == "—"
+
+
+def test_beamline_panel_reads_state(qapp, monkeypatch):
+    objs = {
+        "beam": SimpleNamespace(is_on=lambda verbosity=0: 1),
+        "cms": SimpleNamespace(current_mode="measurement"),
+    }
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: True)
+    monkeypatch.setattr(kernel_access, "get_kernel_object", lambda name: objs.get(name))
+
+    from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
+
+    panel = CMSBeamlinePanel()
+    assert panel._beam_value.text() == "OPEN"
+    assert panel._mode_value.text() == "measurement"
+    assert panel._open_btn.isEnabled() is True
+
+
+def test_beamline_actions_require_confirmation(qapp, monkeypatch):
+    objs = {
+        "beam": SimpleNamespace(is_on=lambda verbosity=0: 0),
+        "cms": SimpleNamespace(current_mode="undefined"),
+    }
+    monkeypatch.setattr(kernel_access, "sam_is_loaded", lambda: True)
+    monkeypatch.setattr(kernel_access, "get_kernel_object", lambda name: objs.get(name))
+    ran = []
+    monkeypatch.setattr(kernel_access, "execute_in_console", lambda code: ran.append(code) or True)
+
+    from lightfall_endstation_cms.panels.beamline_panel import CMSBeamlinePanel
+
+    panel = CMSBeamlinePanel()
+
+    # Declining the confirmation must NOT actuate.
+    monkeypatch.setattr(panel, "_confirm", lambda action: False)
+    panel._on_open()
+    panel._on_alignment()
+    assert ran == []
+
+    # Confirming opens the shutter / switches mode.
+    monkeypatch.setattr(panel, "_confirm", lambda action: True)
+    panel._on_open()
+    panel._on_alignment()
+    assert ran == ["beam.on()", "cms.modeAlignment()"]
+
+    # Closing the beam is the safe direction — no confirmation needed.
+    panel._on_close()
+    assert ran[-1] == "beam.off()"

@@ -27,5 +27,17 @@ manifest = PluginManifest(
             # the "NSLS-II (CMS)" button would be missing from the dialog.
             preload=True,
         ),
+        PluginEntry(
+            type_name="plan",
+            name="fit_scan",
+            import_path="lightfall_endstation_cms.plans:FitScanPlan",
+            metadata={"beamline": "11-BM CMS"},
+        ),
+        PluginEntry(
+            type_name="plan",
+            name="fit_edge",
+            import_path="lightfall_endstation_cms.plans:FitEdgePlan",
+            metadata={"beamline": "11-BM CMS"},
+        ),
     ],
 )

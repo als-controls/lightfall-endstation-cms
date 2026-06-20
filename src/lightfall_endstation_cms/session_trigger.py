@@ -15,11 +15,13 @@ class CMSSessionTrigger:
     """Arms a one-shot profile bootstrap on the first AUTHENTICATED transition.
 
     The bootstrap runs the profile's infrastructure scripts to adopt the live
-    ``RunEngine`` and the write-scoped Tiled client; devices come from happi, so
-    no device backend is involved here.
+    ``RunEngine`` + Tiled client, injects the happi devices into the kernel, and
+    runs the SAM framework. The device backend is passed through so its ophyd
+    instances can be injected under their profile variable names.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, backend: Any = None) -> None:
+        self._backend = backend
         self._done = False        # a bootstrap has SUCCEEDED — stop retrying
         self._running = False     # a bootstrap is in progress — block re-entry
 
@@ -57,7 +59,7 @@ class CMSSessionTrigger:
         logger.info("CMS login detected — running profile-collection bootstrap")
         self._running = True
         try:
-            ok = ProfileSessionBootstrapper().bootstrap(shell)
+            ok = ProfileSessionBootstrapper(self._backend).bootstrap(shell)
         except Exception:
             logger.exception("CMS profile bootstrap raised")
             ok = False

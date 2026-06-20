@@ -31,7 +31,9 @@ def test_run_profile_adds_startup_dir_to_sys_path(tmp_path, monkeypatch):
     saved = list(sys.path)
     try:
         shell = _FakeShell()
-        ProfileSessionBootstrapper().run_profile(shell)
+        bs = ProfileSessionBootstrapper()
+        infra = bs._profile_scripts(bs._keep("infra"))
+        bs.run_profile(shell, infra)
 
         # The startup dir is importable so sibling-by-filename imports resolve
         # (e.g. 86-live-spec.py -> importlib.import_module('85-suitcase-specfile')).

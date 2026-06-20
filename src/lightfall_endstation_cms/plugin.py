@@ -6,12 +6,13 @@ Devices come from a happi JSON database shipped with this package
 instantiates the ophyd objects in the background, so the device tree is
 populated at startup without running the CMS profile-collection.
 
-The profile-collection is still executed once, post-login, by the
-:class:`ProfileSessionBootstrapper` — but only its infrastructure scripts
-(``00``–``03``), purely to adopt the live ``RunEngine`` and the write-scoped
-Tiled client.  Device-defining scripts are no longer run (see
-``bootstrap.DEFAULT_PROFILE_KEEP``); happi is the single source of truth for
-devices.
+The profile-collection is still executed post-login by the
+:class:`ProfileSessionBootstrapper`, in two phases: the infrastructure scripts
+(``00``–``03``) to adopt the live ``RunEngine`` + Tiled client, then — after the
+happi devices are injected into the kernel — the high-level SAM framework
+(``81``/``94``/``95``/``96``/``97``/``991``) the console relies on. The
+device-DEFINING scripts are never run; happi is the single source of truth for
+devices (see ``bootstrap.DEFAULT_INFRA_KEEP`` / ``DEFAULT_SAM_KEEP``).
 """
 from __future__ import annotations
 
@@ -54,11 +55,13 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
             instantiate="background",
         )
 
-        # Arm the one-shot RE + Tiled adoption that runs the profile's
-        # infrastructure scripts in the live kernel after NSLS-II login.
+        # Arm the one-shot post-login bootstrap: it runs the profile infra
+        # (RE + Tiled), injects this backend's happi devices into the kernel,
+        # and runs the SAM framework. The backend is handed over so its ophyd
+        # instances can be injected under their profile variable names.
         from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
 
-        trigger = CMSSessionTrigger()
+        trigger = CMSSessionTrigger(backend)
         backend._session_trigger = trigger  # keep a reference alive
         trigger.arm()
         return backend

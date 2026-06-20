@@ -15,59 +15,77 @@ from lightfall.services.tiled_service import TiledService
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
 
-# Profile scripts to RUN, by numeric filename prefix. Devices now come from the
-# happi backend (see plugin.py), so the profile is no longer the device source
-# and we run ONLY its infrastructure scripts:
+# The profile runs in the kernel in two phases.
 #
-#   00-startup          RunEngine (nslsii.configure_base), tiled_writing_client,
-#                       tiled_reading_client/mig, assets_path(), set_defaults
-#   01-ad33_tmp         area-detector v3.3 compatibility shim
-#   02-tiled-writer     subscribes the Tiled document writer to the RunEngine
-#   03-async            async/RunEngine plumbing
+# INFRA (run first): the infrastructure scripts that stand up the RunEngine and
+# Tiled clients, by numeric filename prefix:
+#   00-startup       RunEngine (nslsii.configure_base), tiled_writing_client,
+#                    tiled_reading_client/mig, assets_path(), set_defaults
+#   01-ad33_tmp      area-detector v3.3 compatibility shim
+#   02-tiled-writer  subscribes the Tiled document writer to the RunEngine
+#   03-async         async/RunEngine plumbing
+# After INFRA we adopt the RunEngine + Tiled client and INJECT the happi device
+# instances into the kernel namespace under their profile variable names.
 #
-# Everything from 10 onward defines devices, plans or helpers that are being
-# migrated to Lightfall (happi devices today; Lightfall plans next), and is no
-# longer executed in the kernel. Running them would also fail, since the device
-# globals they reference (e.g. 94-sample needs 10-motors) are no longer created.
+# SAM (run after injection): CMS's high-level beamline/sample framework, which
+# the console relies on. These reference device globals (now injected), the
+# adopted RE, and caget/caput:
+#   81-beam          beam, the Beamline/CMS_Beamline_XR hierarchy, cms, get_beamline
+#   82-beamstop      beamstop helpers
+#   94-sample        CoordinateSystem/Axis/Sample/Stage/SampleStage/Holder
+#   95-sample-custom per-experiment Sample subclasses
+#   96-automation    automated measurement loops
+#   97-user          get_default_stage and user setup
+#   991-modular-table modular-table coordinate system
+# The device-DEFINING scripts (10/19/20/25/26/27/41-52) are intentionally NOT
+# run — those devices come from happi and are injected. Scripts that need
+# unavailable deps (24 telnetlib, 55 arvpyf, 85/86 spec) or that conflict with
+# the adopted RE (90-bluesky) are also excluded by omission.
 #
-# Override with the CMS_PROFILE_KEEP env var (comma-separated prefixes, which
-# fully REPLACES this default) — e.g. to temporarily run a migrated-but-not-yet
-# script during a transition.
-DEFAULT_PROFILE_KEEP = frozenset({"00", "01", "02", "03"})
+# Per-phase overrides via the CMS_PROFILE_KEEP / CMS_PROFILE_SAM_KEEP env vars
+# (comma-separated prefixes, each fully REPLACING its default) — handy for
+# tuning the SAM set against the live beamline without a code change. Setting
+# CMS_PROFILE_SAM_KEEP empty disables SAM hosting (inject devices only).
+DEFAULT_INFRA_KEEP = frozenset({"00", "01", "02", "03"})
+DEFAULT_SAM_KEEP = frozenset({"81", "82", "94", "95", "96", "97", "991"})
 
 
 class ProfileSessionBootstrapper:
-    """Runs the CMS profile's infra scripts in the live kernel and adopts the
-    RunEngine + write-scoped Tiled client. Devices come from happi, not here."""
+    """Hosts the CMS profile in the live kernel: runs infra → adopts the
+    RunEngine + Tiled client → injects happi devices → runs the SAM framework."""
 
-    def _keep(self) -> set[str]:
-        """Numeric prefixes of profile scripts to run.
+    def __init__(self, backend: Any = None) -> None:
+        # The happi device backend, used to inject ophyd instances into the
+        # kernel namespace so the SAM framework finds its device globals.
+        self._backend = backend
 
-        Honors the ``CMS_PROFILE_KEEP`` env var (comma-separated prefixes),
-        which fully REPLACES :data:`DEFAULT_PROFILE_KEEP` when set.
+    def _keep(self, phase: str) -> set[str]:
+        """Numeric prefixes of profile scripts to run for *phase*.
+
+        Honors a per-phase env override (``CMS_PROFILE_KEEP`` for infra,
+        ``CMS_PROFILE_SAM_KEEP`` for sam), each fully REPLACING its default.
         """
-        env = os.environ.get("CMS_PROFILE_KEEP")
+        env_var = "CMS_PROFILE_KEEP" if phase == "infra" else "CMS_PROFILE_SAM_KEEP"
+        default = DEFAULT_INFRA_KEEP if phase == "infra" else DEFAULT_SAM_KEEP
+        env = os.environ.get(env_var)
         if env is not None:
             return {s.strip() for s in env.split(",") if s.strip()}
-        return set(DEFAULT_PROFILE_KEEP)
+        return set(default)
 
-    def _profile_scripts(self) -> list[Path]:
-        """Ordered infra profile scripts to run. BEAMLINE SEAM (overridden in tests).
+    def _profile_scripts(self, keep: set[str]) -> list[Path]:
+        """Ordered profile scripts whose prefix is in *keep*. BEAMLINE SEAM.
 
-        Skips backup/experimental variants and any script whose numeric prefix
-        is not in the keep-set (see :meth:`_keep`).
+        Skips backup/experimental variants.
         """
         from lightfall_endstation_cms.loader import _get_profile_path
 
         startup = _get_profile_path()
-        keep = self._keep()
         scripts: list[Path] = []
         for p in sorted(startup.glob("[0-9]*.py")):
             if p.name.endswith((".pybak", ".bak")) or "_new." in p.name:
                 continue
             prefix = p.name.split("-")[0]
             if prefix not in keep:
-                logger.debug("Skipping non-infra profile script: {}", p.name)
                 continue
             scripts.append(p)
         return scripts
@@ -131,9 +149,11 @@ class ProfileSessionBootstrapper:
             logger.debug("Could not create profile progress dialog", exc_info=True)
             return None
 
-    def run_profile(self, shell: Any) -> None:
-        """Execute the profile scripts into the kernel shell (beamline)."""
-        scripts = self._profile_scripts()
+    def run_profile(self, shell: Any, scripts: list[Path], label: str = "profile") -> None:
+        """Execute the given profile *scripts* into the kernel shell (beamline)."""
+        if not scripts:
+            return
+        logger.info("Running {} profile phase: {} scripts", label, len(scripts))
         # Paint the (already-shown) main window before the long load begins.
         self._pump_events()
 
@@ -270,10 +290,81 @@ class ProfileSessionBootstrapper:
                 "Could not wire assets_path onto device modules (nslsii missing?)"
             )
 
-    def bootstrap(self, shell: Any) -> bool:
-        """Full handshake: run the infra profile, then adopt RE + Tiled.
+    def _inject_devices(self, namespace: dict[str, Any]) -> int:
+        """Bind the happi device instances into the kernel namespace.
 
-        Returns whether adoption succeeded (the RunEngine was adopted).
+        The SAM framework (``81-beam``/``94-sample``/…) references devices by
+        their profile variable names (``smx``, ``pilatus2M``, …). The happi DB's
+        item names are exactly those (see cms_happi.json), so each device is
+        bound under ``ns[name]``. Prefers the instance the backend already built
+        in the background (so the GUI catalog and the console share one object);
+        otherwise instantiates it via the happi client.
+
+        Returns the number of devices injected.
         """
-        self.run_profile(shell)
-        return self.adopt(shell.user_ns)
+        backend = self._backend
+        if backend is None:
+            logger.warning("No device backend supplied; skipping kernel device injection")
+            return 0
+
+        injected = 0
+        missing: list[str] = []
+        for info in backend.list_devices(active_only=False):
+            obj = getattr(info, "_ophyd_device", None)
+            if obj is None:
+                obj = self._instantiate_device(backend, info.name)
+                if obj is not None:
+                    # Share the instance back so the GUI catalog uses it too.
+                    try:
+                        info._ophyd_device = obj
+                    except Exception:
+                        pass
+            if obj is None:
+                missing.append(info.name)
+                continue
+            namespace[info.name] = obj
+            injected += 1
+
+        logger.info("Injected {} happi devices into the kernel namespace", injected)
+        if missing:
+            logger.warning(
+                "{} device(s) had no instance to inject (still connecting or "
+                "failed to construct): {}",
+                len(missing), missing,
+            )
+        return injected
+
+    @staticmethod
+    def _instantiate_device(backend: Any, name: str) -> Any | None:
+        """Instantiate one ophyd device via the backend's happi client, or None."""
+        client = getattr(backend, "_client", None)
+        if client is None:
+            return None
+        try:
+            results = client.search(name=name)
+            if results:
+                return results[0].get()
+        except Exception:
+            logger.exception("Could not instantiate device '{}' for injection", name)
+        return None
+
+    def bootstrap(self, shell: Any) -> bool:
+        """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.
+
+        Returns whether adoption succeeded (the RunEngine was adopted). The SAM
+        phase is best-effort: a module that fails is logged and skipped (the
+        per-script handler in :meth:`run_profile`), so the session still comes
+        up with RE + injected devices even if part of the framework doesn't load.
+        """
+        infra = self._profile_scripts(self._keep("infra"))
+        self.run_profile(shell, infra, label="infra")
+
+        if not self.adopt(shell.user_ns):
+            return False
+
+        # Devices first, so the SAM framework finds its globals when it loads.
+        self._inject_devices(shell.user_ns)
+
+        sam = self._profile_scripts(self._keep("sam"))
+        self.run_profile(shell, sam, label="sam")
+        return True

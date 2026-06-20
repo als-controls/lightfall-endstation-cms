@@ -16,7 +16,7 @@ def test_trigger_runs_bootstrap_once_on_success(monkeypatch):
 
     import lightfall_endstation_cms.session_trigger as st
     monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: fake_shell)
-    monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda: fake_bootstrapper)
+    monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda backend=None: fake_bootstrapper)
 
     trigger = CMSSessionTrigger()
     # Two AUTHENTICATED transitions; a successful bootstrap must run only once.
@@ -35,7 +35,7 @@ def test_trigger_retries_when_bootstrap_fails(monkeypatch):
 
     import lightfall_endstation_cms.session_trigger as st
     monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: fake_shell)
-    monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda: fake_bootstrapper)
+    monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda backend=None: fake_bootstrapper)
     monkeypatch.setattr(CMSSessionTrigger, "_notify_failure", staticmethod(lambda: None))
 
     trigger = CMSSessionTrigger()

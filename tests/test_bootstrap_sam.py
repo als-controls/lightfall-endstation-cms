@@ -55,6 +55,20 @@ def test_inject_devices_noop_without_backend():
     assert ProfileSessionBootstrapper()._inject_devices({}) == 0
 
 
+def test_seed_namespace_sets_config_globals(monkeypatch):
+    monkeypatch.delenv("CMS_BEAMLINE_STAGE", raising=False)
+    ns: dict = {}
+    ProfileSessionBootstrapper._seed_namespace(ns)
+    assert ns["beamline_stage"] == "default"  # 10-motors default, needed by 81/94
+    assert ns["Pilatus2M_on"] is True
+
+
+def test_seed_namespace_does_not_overwrite_existing():
+    ns = {"beamline_stage": "open_MAXS"}
+    ProfileSessionBootstrapper._seed_namespace(ns)
+    assert ns["beamline_stage"] == "open_MAXS"
+
+
 def test_bootstrap_runs_phases_in_order(monkeypatch):
     bs = ProfileSessionBootstrapper(_FakeBackend([]))
     calls: list = []

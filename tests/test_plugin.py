@@ -20,11 +20,13 @@ def test_create_backend_returns_happi_backend():
     assert plugin.name == "cms_profile_collection"
     backend = plugin.create_backend()
     assert isinstance(backend, HappiBackend)
-    # Backend is pointed at the packaged CMS happi DB, scoped to CMS, and
-    # instantiates devices in the background (no blocking EPICS on connect()).
+    # Backend is pointed at the packaged CMS happi DB, scoped to CMS, and loads
+    # metadata only (instantiate="none"): ophyd objects are NOT created at
+    # startup, so 00-startup's EpicsSignalBase.set_defaults() still runs first.
+    # The bootstrap's injection step constructs them after set_defaults.
     assert backend.path == _happi_db_path()
     assert backend._beamline == "CMS"
-    assert backend._instantiate_mode == "background"
+    assert backend._instantiate_mode == "none"
 
 
 def test_packaged_happi_db_is_valid_json_with_cms_devices():

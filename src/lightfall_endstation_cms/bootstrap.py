@@ -30,24 +30,29 @@ TILED_URI = "https://tiled.nsls2.bnl.gov"
 # SAM (run after injection): CMS's high-level beamline/sample framework, which
 # the console relies on. These reference device globals (now injected), the
 # adopted RE, and caget/caput:
+#   90-bluesky       detselect, config_load/config_update, valve/pump helpers,
+#                    data/metadata output (defines functions only — does NOT
+#                    recreate the RunEngine, so it is safe over the adopted RE)
 #   81-beam          beam, the Beamline/CMS_Beamline_XR hierarchy, cms, get_beamline
 #   82-beamstop      beamstop helpers
 #   94-sample        CoordinateSystem/Axis/Sample/Stage/SampleStage/Holder
 #   95-sample-custom per-experiment Sample subclasses
 #   96-automation    automated measurement loops
-#   97-user          get_default_stage and user setup
+#   97-user          get_default_stage and user setup (needs config_load from 90)
 #   991-modular-table modular-table coordinate system
 # The device-DEFINING scripts (10/19/20/25/26/27/41-52) are intentionally NOT
 # run — those devices come from happi and are injected. Scripts that need
-# unavailable deps (24 telnetlib, 55 arvpyf, 85/86 spec) or that conflict with
-# the adopted RE (90-bluesky) are also excluded by omission.
+# unavailable deps (24 telnetlib, 55 arvpyf, 85/86 spec) are excluded by
+# omission. Config globals those device scripts would set (beamline_stage, the
+# detector-enable flags) are seeded into the namespace before this phase (see
+# :meth:`_seed_namespace`).
 #
 # Per-phase overrides via the CMS_PROFILE_KEEP / CMS_PROFILE_SAM_KEEP env vars
 # (comma-separated prefixes, each fully REPLACING its default) — handy for
 # tuning the SAM set against the live beamline without a code change. Setting
 # CMS_PROFILE_SAM_KEEP empty disables SAM hosting (inject devices only).
 DEFAULT_INFRA_KEEP = frozenset({"00", "01", "02", "03"})
-DEFAULT_SAM_KEEP = frozenset({"81", "82", "94", "95", "96", "97", "991"})
+DEFAULT_SAM_KEEP = frozenset({"90", "81", "82", "94", "95", "96", "97", "991"})
 
 
 class ProfileSessionBootstrapper:
@@ -344,9 +349,39 @@ class ProfileSessionBootstrapper:
             results = client.search(name=name)
             if results:
                 return results[0].get()
-        except Exception:
-            logger.exception("Could not instantiate device '{}' for injection", name)
+        except Exception as exc:
+            # Expected when an IOC is offline (the PV won't connect in time) —
+            # warn and skip rather than dumping a traceback; the device is left
+            # out of the kernel and the session continues.
+            logger.warning("Could not instantiate device '{}' (IOC offline?): {}", name, exc)
         return None
+
+    @staticmethod
+    def _seed_namespace(namespace: dict[str, Any]) -> None:
+        """Seed config globals the device scripts would have set.
+
+        The SAM framework reads config values that are normally defined by the
+        device-defining scripts we no longer run — ``beamline_stage`` (set in
+        10-motors) selects the sample-stage PVs in 81-beam/94-sample, and the
+        detector-enable flags are read by 20-area-detectors. Seed them (honoring
+        env overrides) before the SAM phase so those modules resolve. Existing
+        values are not overwritten.
+        """
+        def _flag(env: str, default: bool) -> bool:
+            val = os.environ.get(env)
+            return default if not val else val.lower() in ("1", "true", "yes", "on")
+
+        seeds = {
+            "beamline_stage": os.environ.get("CMS_BEAMLINE_STAGE", "default"),
+            "Camera_on": _flag("CMS_CAMERA_ON", True),
+            "Pilatus300_on": _flag("CMS_PILATUS300_ON", False),
+            "Pilatus800_on": _flag("CMS_PILATUS800_ON", True),
+            "Pilatus800_2_on": _flag("CMS_PILATUS800_2_ON", False),
+            "Pilatus2M_on": _flag("CMS_PILATUS2M_ON", True),
+        }
+        for key, value in seeds.items():
+            namespace.setdefault(key, value)
+        logger.info("Seeded SAM config globals: beamline_stage={}", seeds["beamline_stage"])
 
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.
@@ -362,8 +397,9 @@ class ProfileSessionBootstrapper:
         if not self.adopt(shell.user_ns):
             return False
 
-        # Devices first, so the SAM framework finds its globals when it loads.
+        # Devices + config globals first, so the SAM framework finds them on load.
         self._inject_devices(shell.user_ns)
+        self._seed_namespace(shell.user_ns)
 
         sam = self._profile_scripts(self._keep("sam"))
         self.run_profile(shell, sam, label="sam")

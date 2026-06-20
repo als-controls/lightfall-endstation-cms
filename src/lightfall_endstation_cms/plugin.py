@@ -49,10 +49,17 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
         return "cms_profile_collection"
 
     def create_backend(self) -> DeviceBackend:
+        # instantiate="none": load device METADATA only at startup, do NOT
+        # construct ophyd objects yet. Background instantiation would create
+        # EpicsSignalBase instances before login, which makes 00-startup's
+        # ``EpicsSignalBase.set_defaults(timeout=120)`` raise ("called too late")
+        # and abort the rest of 00 (assets_path, beamline_stage, …). The ophyd
+        # objects are instead constructed by the bootstrap's device-injection
+        # step, which runs AFTER 00-startup's set_defaults (see bootstrap.py).
         backend = HappiBackend(
             path=_happi_db_path(),
             beamline=_BEAMLINE,
-            instantiate="background",
+            instantiate="none",
         )
 
         # Arm the one-shot post-login bootstrap: it runs the profile infra

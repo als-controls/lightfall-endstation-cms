@@ -18,6 +18,29 @@ def _happi_items() -> dict:
     return {k: v for k, v in db.items() if not k.startswith("_")}
 
 
+def test_happi_db_loads_every_entry_through_backend():
+    """Regression: the packaged DB must actually load through HappiBackend.
+
+    happi rejects any document lacking ``type`` or whose name is not a valid
+    Python identifier, and a non-dict top-level key (e.g. a `_NOTES` list) fails
+    the whole client. Loading metadata does not import device_class, so this
+    runs without ophyd/nslsii.
+    """
+    pytest.importorskip("happi")
+    from lightfall.devices.backends.happi import HappiBackend
+
+    backend = HappiBackend(path=str(_HAPPI_JSON), beamline="CMS", instantiate="none")
+    assert backend.connect() is True
+
+    loaded = {d.name for d in backend.list_devices(active_only=False)}
+    expected = set(_happi_items())  # JSON keys == profile var names
+    # Every entry loads (none skipped as malformed) ...
+    assert loaded == expected, f"missing: {sorted(expected - loaded)}"
+    # ... and the happi item name is the profile var name, so kernel injection
+    # (ns[name] = ophyd_instance) binds devices under the names the profile uses.
+    assert "pilatus2M" in loaded and "fs1" in loaded
+
+
 def test_custom_device_class_modules_exist():
     """Every ``lightfall_endstation_cms.devices.<mod>.<Cls>`` referenced by the
     happi DB must point at a sub-module file that ships in the package. (Static

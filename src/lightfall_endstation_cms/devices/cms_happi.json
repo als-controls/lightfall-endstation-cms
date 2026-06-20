@@ -1,1283 +1,1776 @@
 {
-  "_NOTES": [
-    "Happi OphydItem database for CMS beamline (XF:11BM / NSLS-II).",
-    "Generated from profile-collection/startup/ scripts.",
-    "beamline_stage assumed = 'default' for conditional motor PVs.",
-    "Pilatus300 active=false (Pilatus300_on=False in default config).",
-    "Pilatus800k-2 active=false (Pilatus800_2_on=False in default config).",
-    "ScaleSignal devices omitted — DerivedSignal takes a Signal obj, not a PV.",
-    "Serial devices (Agilent, Keithley, Minichiller) omitted — open sockets on __init__.",
-    "Post-construction config (read_attrs, kind, ensure_blocking) not captured here."
-  ],
-
   "mono_bragg": {
     "_id": "mono_bragg",
     "name": "mono_bragg",
     "prefix": "XF:11BMA-OP{Mono:DMM-Ax:Bragg}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mono_bragg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "monochromator"
+    "functional_group": "monochromator",
+    "type": "OphydItem"
   },
   "mono_pitch2": {
     "_id": "mono_pitch2",
     "name": "mono_pitch2",
     "prefix": "XF:11BMA-OP{Mono:DMM-Ax:P2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mono_pitch2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "monochromator"
+    "functional_group": "monochromator",
+    "type": "OphydItem"
   },
   "mono_roll2": {
     "_id": "mono_roll2",
     "name": "mono_roll2",
     "prefix": "XF:11BMA-OP{Mono:DMM-Ax:R2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mono_roll2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "monochromator"
+    "functional_group": "monochromator",
+    "type": "OphydItem"
   },
   "mono_perp2": {
     "_id": "mono_perp2",
     "name": "mono_perp2",
     "prefix": "XF:11BMA-OP{Mono:DMM-Ax:Y2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mono_perp2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "monochromator"
+    "functional_group": "monochromator",
+    "type": "OphydItem"
   },
-
   "mir_usx": {
     "_id": "mir_usx",
     "name": "mir_usx",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:XU}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_usx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
   "mir_dsx": {
     "_id": "mir_dsx",
     "name": "mir_dsx",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:XD}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_dsx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
   "mir_usy": {
     "_id": "mir_usy",
     "name": "mir_usy",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:YU}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_usy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
   "mir_dsyi": {
     "_id": "mir_dsyi",
     "name": "mir_dsyi",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:YDI}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_dsyi"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
   "mir_dsyo": {
     "_id": "mir_dsyo",
     "name": "mir_dsyo",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:YDO}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_dsyo"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
   "mir_bend": {
     "_id": "mir_bend",
     "name": "mir_bend",
     "prefix": "XF:11BMA-OP{Mir:Tor-Ax:UB}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "mir_bend"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "mirror"
+    "functional_group": "mirror",
+    "type": "OphydItem"
   },
-
   "s0": {
     "_id": "s0",
     "name": "s0",
     "prefix": "XF:11BMA-OP{Slt:0",
     "device_class": "lightfall_endstation_cms.devices.motors.Blades",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s0"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
   "s1": {
     "_id": "s1",
     "name": "s1",
     "prefix": "XF:11BMB-OP{Slt:1",
     "device_class": "lightfall_endstation_cms.devices.motors.MotorCenterAndGap",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "config_file": "cfg/s1_config.cfg"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s1",
+      "config_file": "cfg/s1_config.cfg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
   "s2": {
     "_id": "s2",
     "name": "s2",
     "prefix": "XF:11BMB-OP{Slt:2",
     "device_class": "lightfall_endstation_cms.devices.motors.MotorCenterAndGap",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "config_file": "cfg/s2_config.cfg"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s2",
+      "config_file": "cfg/s2_config.cfg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
   "s3": {
     "_id": "s3",
     "name": "s3",
     "prefix": "XF:11BMB-OP{Slt:3",
     "device_class": "lightfall_endstation_cms.devices.motors.MotorCenterAndGap",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "config_file": "cfg/s3_config.cfg"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s3",
+      "config_file": "cfg/s3_config.cfg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
   "s4": {
     "_id": "s4",
     "name": "s4",
     "prefix": "XF:11BMB-OP{Slt:4",
     "device_class": "lightfall_endstation_cms.devices.motors.MotorCenterAndGap",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "config_file": "cfg/s4_config.cfg"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s4",
+      "config_file": "cfg/s4_config.cfg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
   "s5": {
     "_id": "s5",
     "name": "s5",
     "prefix": "XF:11BMB-OP{Slt:5",
     "device_class": "lightfall_endstation_cms.devices.motors.MotorCenterAndGap",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "config_file": "cfg/s5_config.cfg"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "s5",
+      "config_file": "cfg/s5_config.cfg"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "slits"
+    "functional_group": "slits",
+    "type": "OphydItem"
   },
-
   "filter1": {
     "_id": "filter1",
     "name": "filter1",
     "prefix": "XF:11BMB-OP{Fltr:1}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter2": {
     "_id": "filter2",
     "name": "filter2",
     "prefix": "XF:11BMB-OP{Fltr:2}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter3": {
     "_id": "filter3",
     "name": "filter3",
     "prefix": "XF:11BMB-OP{Fltr:3}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter4": {
     "_id": "filter4",
     "name": "filter4",
     "prefix": "XF:11BMB-OP{Fltr:4}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter4"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter5": {
     "_id": "filter5",
     "name": "filter5",
     "prefix": "XF:11BMB-OP{Fltr:5}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter5"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter6": {
     "_id": "filter6",
     "name": "filter6",
     "prefix": "XF:11BMB-OP{Fltr:6}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter6"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter7": {
     "_id": "filter7",
     "name": "filter7",
     "prefix": "XF:11BMB-OP{Fltr:7}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter7"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
   "filter8": {
     "_id": "filter8",
     "name": "filter8",
     "prefix": "XF:11BMB-OP{Fltr:8}",
     "device_class": "lightfall_endstation_cms.devices.motors.Filter",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "filter8"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "attenuators"
+    "functional_group": "attenuators",
+    "type": "OphydItem"
   },
-
   "bim3y": {
     "_id": "bim3y",
     "name": "bim3y",
     "prefix": "XF:11BMB-BI{IM:3-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim3y"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "diagnostics"
+    "functional_group": "diagnostics",
+    "type": "OphydItem"
   },
   "fs3y": {
     "_id": "fs3y",
     "name": "fs3y",
     "prefix": "XF:11BMB-BI{FS:3-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "fs3y"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "diagnostics"
+    "functional_group": "diagnostics",
+    "type": "OphydItem"
   },
   "bim4y": {
     "_id": "bim4y",
     "name": "bim4y",
     "prefix": "XF:11BMB-BI{IM:4-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim4y"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "diagnostics"
+    "functional_group": "diagnostics",
+    "type": "OphydItem"
   },
   "bim5y": {
     "_id": "bim5y",
     "name": "bim5y",
     "prefix": "XF:11BMB-BI{IM:5-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim5y"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "diagnostics"
+    "functional_group": "diagnostics",
+    "type": "OphydItem"
   },
-
   "smx": {
     "_id": "smx",
     "name": "smx",
     "prefix": "XF:11BMB-ES{Chm:Smpl2-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "smx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "sample_stage",
-    "documentation": "Default stage (beamline_stage='default'). open_MAXS: XF:11BMB-ES{Chm:Smpl3-Ax:X}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl2-Ax:Y}Mtr."
+    "documentation": "Default stage (beamline_stage='default'). open_MAXS: XF:11BMB-ES{Chm:Smpl3-Ax:X}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl2-Ax:Y}Mtr.",
+    "type": "OphydItem"
   },
   "smy": {
     "_id": "smy",
     "name": "smy",
     "prefix": "XF:11BMB-ES{Chm:Smpl-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "smy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "sample_stage",
-    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{Chm:Smpl2-Ax:Y}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:Y}Mtr."
+    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{Chm:Smpl2-Ax:Y}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:Y}Mtr.",
+    "type": "OphydItem"
   },
   "sth": {
     "_id": "sth",
     "name": "sth",
     "prefix": "XF:11BMB-ES{Chm:Smpl-Ax:theta}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "sth"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "sample_stage",
-    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{SM:2-Ax:theta}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:theta}Mtr."
+    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{SM:2-Ax:theta}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:theta}Mtr.",
+    "type": "OphydItem"
   },
   "schi": {
     "_id": "schi",
     "name": "schi",
     "prefix": "XF:11BMB-ES{Chm:Smpl-Ax:chi}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "schi"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "sample_stage",
-    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{SM:2-Ax:chi}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:chi}Mtr."
+    "documentation": "Default stage. open_MAXS: XF:11BMB-ES{SM:2-Ax:chi}Mtr. BigHuber: XF:11BMB-ES{Chm:Smpl3-Ax:chi}Mtr.",
+    "type": "OphydItem"
   },
-
   "fpn": {
     "_id": "fpn",
     "name": "fpn",
     "prefix": "XF:11BM-ES{Mdrive-Ax:1}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "fpn"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "flight_path"
+    "functional_group": "flight_path",
+    "type": "OphydItem"
   },
   "fpr": {
     "_id": "fpr",
     "name": "fpr",
     "prefix": "XF:11BM-ES{Mdrive-Ax:2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "fpr"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "flight_path"
+    "functional_group": "flight_path",
+    "type": "OphydItem"
   },
-
   "smy2": {
     "_id": "smy2",
     "name": "smy2",
     "prefix": "XF:11BMB-ES{Chm:Smpl-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "smy2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "sphi": {
     "_id": "sphi",
     "name": "sphi",
     "prefix": "XF:11BMB-ES{Chm:Smpl-Ax:phi}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "sphi"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "srot": {
     "_id": "srot",
     "name": "srot",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Srot}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "srot"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "strans": {
     "_id": "strans",
     "name": "strans",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Strans}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "strans"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "strans2": {
     "_id": "strans2",
     "name": "strans2",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Strans2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "strans2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "stilt": {
     "_id": "stilt",
     "name": "stilt",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Stilt}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "stilt"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
   "stilt2": {
     "_id": "stilt2",
     "name": "stilt2",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Stilt2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "stilt2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "goniometer"
+    "functional_group": "goniometer",
+    "type": "OphydItem"
   },
-
   "camx": {
     "_id": "camx",
     "name": "camx",
     "prefix": "XF:11BMB-ES{Cam:OnAxis-Ax:X1}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "camx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "on_axis_camera"
+    "functional_group": "on_axis_camera",
+    "type": "OphydItem"
   },
   "camy": {
     "_id": "camy",
     "name": "camy",
     "prefix": "XF:11BMB-ES{Cam:OnAxis-Ax:Y1}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "camy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "on_axis_camera"
+    "functional_group": "on_axis_camera",
+    "type": "OphydItem"
   },
   "cam2x": {
     "_id": "cam2x",
     "name": "cam2x",
     "prefix": "XF:11BMB-ES{Cam:OnAxis-Ax:X2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "cam2x"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "off_axis_camera"
+    "functional_group": "off_axis_camera",
+    "type": "OphydItem"
   },
   "cam2z": {
     "_id": "cam2z",
     "name": "cam2z",
     "prefix": "XF:11BMB-ES{Cam:OnAxis-Ax:Y2}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "cam2z"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "off_axis_camera"
+    "functional_group": "off_axis_camera",
+    "type": "OphydItem"
   },
-
   "armz": {
     "_id": "armz",
     "name": "armz",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Z}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "armz"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "robot_arm"
+    "functional_group": "robot_arm",
+    "type": "OphydItem"
   },
   "armx": {
     "_id": "armx",
     "name": "armx",
     "prefix": "XF:11BMB-ES{SM:1-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "armx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "robot_arm"
+    "functional_group": "robot_arm",
+    "type": "OphydItem"
   },
   "armphi": {
     "_id": "armphi",
     "name": "armphi",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Yaw}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "armphi"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "robot_arm"
+    "functional_group": "robot_arm",
+    "type": "OphydItem"
   },
   "army": {
     "_id": "army",
     "name": "army",
     "prefix": "XF:11BMB-ES{SM:1-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "army"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "robot_arm"
+    "functional_group": "robot_arm",
+    "type": "OphydItem"
   },
   "armr": {
     "_id": "armr",
     "name": "armr",
     "prefix": "XF:11BMB-ES{ATT:1-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "armr"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "robot_arm"
+    "functional_group": "robot_arm",
+    "type": "OphydItem"
   },
-
   "WAXSx": {
     "_id": "WAXSx",
     "name": "WAXSx",
     "prefix": "XF:11BMB-ES{Det:WAXS-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "WAXSx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "WAXSy": {
     "_id": "WAXSy",
     "name": "WAXSy",
     "prefix": "XF:11BMB-ES{Det:WAXS-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "WAXSy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "WAXSz": {
     "_id": "WAXSz",
     "name": "WAXSz",
     "prefix": "XF:11BMB-ES{Det:WAXS-Ax:Z}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "WAXSz"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "SAXSx": {
     "_id": "SAXSx",
     "name": "SAXSx",
     "prefix": "XF:11BMB-ES{Det:SAXS-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "SAXSx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "SAXSy": {
     "_id": "SAXSy",
     "name": "SAXSy",
     "prefix": "XF:11BMB-ES{Det:SAXS-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "SAXSy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "MAXSx": {
     "_id": "MAXSx",
     "name": "MAXSx",
     "prefix": "XF:11BMB-ES{Det:MAXS-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "MAXSx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
   "MAXSy": {
     "_id": "MAXSy",
     "name": "MAXSy",
     "prefix": "XF:11BMB-ES{Det:MAXS-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "MAXSy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detector_stage"
+    "functional_group": "detector_stage",
+    "type": "OphydItem"
   },
-
   "bsx": {
     "_id": "bsx",
     "name": "bsx",
     "prefix": "XF:11BMB-ES{BS-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bsx"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beamstop"
+    "functional_group": "beamstop",
+    "type": "OphydItem"
   },
   "bsy": {
     "_id": "bsy",
     "name": "bsy",
     "prefix": "XF:11BMB-ES{BS-Ax:Y}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bsy"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beamstop"
+    "functional_group": "beamstop",
+    "type": "OphydItem"
   },
   "bsphi": {
     "_id": "bsphi",
     "name": "bsphi",
     "prefix": "XF:11BMB-ES{BS-Ax:Phi}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bsphi"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beamstop"
+    "functional_group": "beamstop",
+    "type": "OphydItem"
   },
-
   "gatex": {
     "_id": "gatex",
     "name": "gatex",
     "prefix": "XF:11BMB-ES{Chm:Gate-Ax:X}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "gatex"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "vacuum"
+    "functional_group": "vacuum",
+    "type": "OphydItem"
   },
-
   "TABLEr": {
     "_id": "TABLEr",
     "name": "TABLEr",
     "prefix": "XF:11BMB-ES{Tbl:Rear-Ax:Z}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "TABLEr"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "modular_table"
+    "functional_group": "modular_table",
+    "type": "OphydItem"
   },
   "TABLEn": {
     "_id": "TABLEn",
     "name": "TABLEn",
     "prefix": "XF:11BMB-ES{Tbl:Near-Ax:Z}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "TABLEn"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "modular_table"
+    "functional_group": "modular_table",
+    "type": "OphydItem"
   },
   "TABLEd": {
     "_id": "TABLEd",
     "name": "TABLEd",
     "prefix": "XF:11BMB-ES{Tbl:End-Ax:Z}Mtr",
     "device_class": "ophyd.EpicsMotor",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "TABLEd"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "modular_table"
+    "functional_group": "modular_table",
+    "type": "OphydItem"
   },
-
   "trigger_new_pv": {
     "_id": "trigger_new_pv",
     "name": "trigger_new_pv",
     "prefix": "XF:11BM-ES{Shutter}",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "trigger_new_pv"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
   "shutter_sts1_pv": {
     "_id": "shutter_sts1_pv",
     "name": "shutter_sts1_pv",
     "prefix": "XF:11BM-ES{Psh_blade1}Pos",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "shutter_sts1_pv"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
   "shutter_sts2_pv": {
     "_id": "shutter_sts2_pv",
     "name": "shutter_sts2_pv",
     "prefix": "XF:11BM-ES{Psh_blade2}Pos",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "shutter_sts2_pv"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
   "photonshutter_sts": {
     "_id": "photonshutter_sts",
     "name": "photonshutter_sts",
     "prefix": "XF:11BMA-PPS{PSh}Sts:FailOpn-Sts",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "photonshutter_sts"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
   "photonshutter_open": {
     "_id": "photonshutter_open",
     "name": "photonshutter_open",
     "prefix": "XF:11BMA-PPS{PSh}Cmd:Opn-Cmd",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "photonshutter_open"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
   "photonshutter_cls": {
     "_id": "photonshutter_cls",
     "name": "photonshutter_cls",
     "prefix": "XF:11BMA-PPS{PSh}Cmd:Cls-Cmd",
     "device_class": "ophyd.EpicsSignal",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "photonshutter_cls"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "shutters"
+    "functional_group": "shutters",
+    "type": "OphydItem"
   },
-
   "quad_electrometer1_1": {
     "_id": "quad_electrometer1_1",
     "name": "quad_electrometer1_1",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current1:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer1_1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer1_2": {
     "_id": "quad_electrometer1_2",
     "name": "quad_electrometer1_2",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current2:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer1_2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer1_3": {
     "_id": "quad_electrometer1_3",
     "name": "quad_electrometer1_3",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current3:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer1_3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer1_4": {
     "_id": "quad_electrometer1_4",
     "name": "quad_electrometer1_4",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current4:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer1_4"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "bim1": {
     "_id": "bim1",
     "name": "bim1",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current1:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "bim2": {
     "_id": "bim2",
     "name": "bim2",
     "prefix": "XF:11BMA-BI{IM:1}EM180:Current2:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "ion_chamber1": {
     "_id": "ion_chamber1",
     "name": "ion_chamber1",
     "prefix": "XF:11BMB-BI{IM:3}:IC1_MON",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "ion_chamber1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "ion_chamber2": {
     "_id": "ion_chamber2",
     "name": "ion_chamber2",
     "prefix": "XF:11BMB-BI{IM:3}:IC2_MON",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "ion_chamber2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "ion_chamber3": {
     "_id": "ion_chamber3",
     "name": "ion_chamber3",
     "prefix": "XF:11BMB-BI{IM:3}:IC3_MON",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "ion_chamber3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "ion_chamber4": {
     "_id": "ion_chamber4",
     "name": "ion_chamber4",
     "prefix": "XF:11BMB-BI{IM:3}:IC4_MON",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "ion_chamber4"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer2_1": {
     "_id": "quad_electrometer2_1",
     "name": "quad_electrometer2_1",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current1:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer2_1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer2_2": {
     "_id": "quad_electrometer2_2",
     "name": "quad_electrometer2_2",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current2:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer2_2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer2_3": {
     "_id": "quad_electrometer2_3",
     "name": "quad_electrometer2_3",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current3:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer2_3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "quad_electrometer2_4": {
     "_id": "quad_electrometer2_4",
     "name": "quad_electrometer2_4",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current4:MeanValue_RBV",
     "device_class": "ophyd.EpicsSignalRO",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "quad_electrometer2_4"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "bim6": {
     "_id": "bim6",
     "name": "bim6",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current1:MeanValue_RBV",
     "device_class": "lightfall_endstation_cms.devices.ion_chambers.EpicsSignalROWait",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}", "wait_time": 1},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim6",
+      "wait_time": 1
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
   "bim6_integrating": {
     "_id": "bim6_integrating",
     "name": "bim6_integrating",
     "prefix": "XF:11BMB-BI{IM:2}EM180:Current1:MeanValue_RBV",
     "device_class": "lightfall_endstation_cms.devices.ion_chambers.EpicsSignalROIntegrate",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "bim6", "wait_time": 0.5, "integrate_num": 8, "integrate_delay": 0.1},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "bim6",
+      "wait_time": 0.5,
+      "integrate_num": 8,
+      "integrate_delay": 0.1
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
-
   "ic": {
     "_id": "ic",
     "name": "ic",
     "prefix": "XF:11BMB-BI{IM:3}:",
     "device_class": "lightfall_endstation_cms.devices.ion_chambers.IonChamber",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "ic"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "beam_monitors"
+    "functional_group": "beam_monitors",
+    "type": "OphydItem"
   },
-
   "xs": {
     "_id": "xs",
     "name": "xs",
     "prefix": "XF:11BM-ES{Xsp:1}:",
     "device_class": "lightfall_endstation_cms.devices.xspress3.OPLSXspress3Detector",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "xs"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "detectors"
+    "functional_group": "detectors",
+    "type": "OphydItem"
   },
-
   "fs1": {
     "_id": "fs1",
-    "name": "webcam-1",
+    "name": "fs1",
     "prefix": "XF:11BMA-BI{FS:1-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "cameras"
+    "functional_group": "cameras",
+    "type": "OphydItem"
   },
   "fs2": {
     "_id": "fs2",
-    "name": "webcam-2",
+    "name": "fs2",
     "prefix": "XF:11BMA-BI{FS:2-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-2"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "foe",
-    "functional_group": "cameras"
+    "functional_group": "cameras",
+    "type": "OphydItem"
   },
   "fs3": {
     "_id": "fs3",
-    "name": "webcam-3",
+    "name": "fs3",
     "prefix": "XF:11BMB-BI{FS:3-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "cameras",
-    "documentation": "KNOWN IOC ISSUE: pyepics connection timeout as of 2026-06-19. Check XF:11BMB-BI{FS:3-Cam:1} IOC."
+    "documentation": "KNOWN IOC ISSUE: pyepics connection timeout as of 2026-06-19. Check XF:11BMB-BI{FS:3-Cam:1} IOC.",
+    "type": "OphydItem"
   },
   "fs4": {
     "_id": "fs4",
-    "name": "webcam-4",
+    "name": "fs4",
     "prefix": "XF:11BMB-BI{FS:4-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-4"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "cameras"
+    "functional_group": "cameras",
+    "type": "OphydItem"
   },
   "fs5": {
     "_id": "fs5",
-    "name": "webcam-5",
+    "name": "fs5",
     "prefix": "XF:11BMB-BI{FS:Test-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-5"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "cameras",
-    "documentation": "Mobile camera"
+    "documentation": "Mobile camera",
+    "type": "OphydItem"
   },
   "fs6": {
     "_id": "fs6",
-    "name": "webcam-6",
+    "name": "fs6",
     "prefix": "XF:11BMB-BI{OffAxis-Cam:1}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-6"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "cameras",
-    "documentation": "Off-axis camera"
+    "documentation": "Off-axis camera",
+    "type": "OphydItem"
   },
   "fs8": {
     "_id": "fs8",
-    "name": "webcam-8",
+    "name": "fs8",
     "prefix": "XF:11BMB-BI{Cam:08}",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
-    "active": true,
-    "beamline": "CMS",
-    "location_group": "endstation",
-    "functional_group": "cameras"
-  },
-  "fs9": {
-    "_id": "fs9",
-    "name": "webcam-9",
-    "prefix": "XF:11BMB-BI{OnAxis-Cam:2}",
-    "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-8"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "cameras",
-    "documentation": "On-axis camera"
+    "type": "OphydItem"
   },
-
+  "fs9": {
+    "_id": "fs9",
+    "name": "fs9",
+    "prefix": "XF:11BMB-BI{OnAxis-Cam:2}",
+    "device_class": "lightfall_endstation_cms.devices.area_detectors.StandardProsilicaV33",
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "webcam-9"
+    },
+    "active": true,
+    "beamline": "CMS",
+    "location_group": "endstation",
+    "functional_group": "cameras",
+    "documentation": "On-axis camera",
+    "type": "OphydItem"
+  },
   "pilatus800": {
     "_id": "pilatus800",
-    "name": "pilatus800k-1",
+    "name": "pilatus800",
     "prefix": "XF:11BMB-ES{Det:PIL800K}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.Pilatus800V33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus800k-1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 800k WAXS detector (TIFF mode). Pilatus800_on=True in default config."
+    "documentation": "Pilatus 800k WAXS detector (TIFF mode). Pilatus800_on=True in default config.",
+    "type": "OphydItem"
   },
   "pilatus800_h5": {
     "_id": "pilatus800_h5",
-    "name": "pilatus800k-1-h5",
+    "name": "pilatus800_h5",
     "prefix": "XF:11BMB-ES{Det:PIL800K}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.PilatusV33_h5",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus800k-1-h5"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 800k WAXS detector (HDF5 mode). Same IOC as pilatus800."
+    "documentation": "Pilatus 800k WAXS detector (HDF5 mode). Same IOC as pilatus800.",
+    "type": "OphydItem"
   },
   "pilatus8002": {
     "_id": "pilatus8002",
-    "name": "pilatus800k-2",
+    "name": "pilatus8002",
     "prefix": "XF:11BMB-ES{Det:PIL800K2}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.Pilatus8002V33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus800k-2"
+    },
     "active": false,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 800k-2 alternate WAXS detector. active=false in default (beamline_stage='default') config. Enable when beamline_stage is 'open_MAXS' or 'BigHuber'."
+    "documentation": "Pilatus 800k-2 alternate WAXS detector. active=false in default (beamline_stage='default') config. Enable when beamline_stage is 'open_MAXS' or 'BigHuber'.",
+    "type": "OphydItem"
   },
   "pilatus8002_h5": {
     "_id": "pilatus8002_h5",
-    "name": "pilatus800k-2-h5",
+    "name": "pilatus8002_h5",
     "prefix": "XF:11BMB-ES{Det:PIL800K2}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.PilatusV33_h5",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus800k-2-h5"
+    },
     "active": false,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 800k-2 HDF5 mode. active=false in default config."
+    "documentation": "Pilatus 800k-2 HDF5 mode. active=false in default config.",
+    "type": "OphydItem"
   },
   "pilatus2M": {
     "_id": "pilatus2M",
-    "name": "pilatus2m-1",
+    "name": "pilatus2M",
     "prefix": "XF:11BMB-ES{Det:PIL2M}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.Pilatus2MV33",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus2m-1"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 2M SAXS detector (TIFF mode). Primary area detector at CMS."
+    "documentation": "Pilatus 2M SAXS detector (TIFF mode). Primary area detector at CMS.",
+    "type": "OphydItem"
   },
   "pilatus2M_h5": {
     "_id": "pilatus2M_h5",
-    "name": "pilatus2m-1-h5",
+    "name": "pilatus2M_h5",
     "prefix": "XF:11BMB-ES{Det:PIL2M}:",
     "device_class": "lightfall_endstation_cms.devices.area_detectors.PilatusV33_h5",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "pilatus2m-1-h5"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
     "functional_group": "detectors",
-    "documentation": "Pilatus 2M SAXS detector (HDF5 mode). Same IOC as pilatus2M."
+    "documentation": "Pilatus 2M SAXS detector (HDF5 mode). Same IOC as pilatus2M.",
+    "type": "OphydItem"
   },
-
   "diodebox3": {
     "_id": "diodebox3",
-    "name": "Diodebox3",
+    "name": "diodebox3",
     "prefix": "XF:11BMB-CT{DIODE-Local:3}",
     "device_class": "lightfall_endstation_cms.devices.diodebox.DiodeBox",
-    "args": ["{{prefix}}"],
-    "kwargs": {"name": "{{name}}"},
+    "args": [
+      "{{prefix}}"
+    ],
+    "kwargs": {
+      "name": "Diodebox3"
+    },
     "active": true,
     "beamline": "CMS",
     "location_group": "endstation",
-    "functional_group": "controls"
+    "functional_group": "controls",
+    "type": "OphydItem"
   }
 }

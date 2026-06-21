@@ -7,7 +7,7 @@ from pathlib import Path
 from lightfall.devices.backends.happi import HappiBackend
 from lightfall.plugins.device_backend_plugin import DeviceBackendPlugin
 
-from lightfall_endstation_cms.plugin import _happi_db_path, CMSProfileCollectionPlugin
+from lightfall_endstation_cms.plugin import CMSProfileCollectionPlugin, _happi_db_path
 
 
 def test_is_device_backend_plugin():

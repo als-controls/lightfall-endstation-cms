@@ -49,26 +49,21 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
         return "cms_profile_collection"
 
     def create_backend(self) -> DeviceBackend:
-        # instantiate="none": load device METADATA only at startup, do NOT
-        # construct ophyd objects yet. Background instantiation would create
-        # EpicsSignalBase instances before login, which makes 00-startup's
-        # ``EpicsSignalBase.set_defaults(timeout=120)`` raise ("called too late")
-        # and abort the rest of 00 (assets_path, beamline_stage, …). The ophyd
-        # objects are instead constructed by the bootstrap's device-injection
-        # step, which runs AFTER 00-startup's set_defaults (see bootstrap.py).
-        backend = HappiBackend(
+        # Ordinary post-login happi backend: instantiate="background" lets the
+        # DeviceConnectionManager construct the ophyd objects and report live
+        # status, so devices auto-initialize instead of staying UNKNOWN. Under
+        # lightfall's post-login plugin loading this whole backend loads after
+        # authentication, so there is no pre-login EpicsSignalBase creation to
+        # sequence around — the old instantiate="none" + kernel-injection
+        # workaround (and 00-startup's set_defaults) is gone.
+        #
+        # NOTE: SAM hosting (the profile/console framework the CMS panels veneer
+        # over) is being re-expressed as a catalog-driven post-login action;
+        # the old AUTHENTICATED-armed CMSSessionTrigger is intentionally NOT
+        # armed here (it armed too late under post-login loading and would fire
+        # the bootstrap on a re-login against already-instantiated devices).
+        return HappiBackend(
             path=_happi_db_path(),
             beamline=_BEAMLINE,
-            instantiate="none",
+            instantiate="background",
         )
-
-        # Arm the one-shot post-login bootstrap: it runs the profile infra
-        # (RE + Tiled), injects this backend's happi devices into the kernel,
-        # and runs the SAM framework. The backend is handed over so its ophyd
-        # instances can be injected under their profile variable names.
-        from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
-
-        trigger = CMSSessionTrigger(backend)
-        backend._session_trigger = trigger  # keep a reference alive
-        trigger.arm()
-        return backend

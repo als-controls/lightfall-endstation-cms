@@ -13,10 +13,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from loguru import logger
-
 from lightfall.auth.providers.base import AuthProvider
 from lightfall.plugins.auth_provider_plugin import AuthProviderPlugin
+from lightfall.utils.threads import invoke_in_main_thread
+from loguru import logger
 
 TILED_URI = "https://tiled.nsls2.bnl.gov"
 # The profile-collection reads via from_profile("nsls2"); warm the token cache
@@ -24,6 +24,9 @@ TILED_URI = "https://tiled.nsls2.bnl.gov"
 # from_profile("nsls2") reads ride it (rather than from_uri(TILED_URI), which
 # could key the cache differently if the profile URI normalizes differently).
 TILED_PROFILE = "nsls2"
+# Tiled node the data browser opens (read-scoped, via the duo-warmed token).
+# CMS data lives under cms/raw; adjust here if the browse root should differ.
+_BROWSE_PATH = ("cms", "raw")
 
 
 class NSLS2TiledAuthProvider(AuthProvider):
@@ -119,6 +122,11 @@ class NSLS2TiledAuthProvider(AuthProvider):
         if not ok:
             return None
 
+        # The login just warmed the "nsls2" tiled token cache. Hand lightfall's
+        # data browser a read-scoped NSLS-II catalog (reusing that token) so it
+        # does not fall back to the default (ALS) Tiled server. Best-effort.
+        self._adopt_browser_client()
+
         # Real API: User.roles is set[Role], not a singular role= kwarg.
         # The brief's role=Role.USER is adjusted to roles={Role.USER}.
         user = User(
@@ -128,6 +136,50 @@ class NSLS2TiledAuthProvider(AuthProvider):
             expires_at=datetime.now(UTC) + timedelta(days=7),  # PLACEHOLDER TTL — not derived from actual NSLS-II tiled token expiry; reconcile at beamline
         )
         return Session(user=user)
+
+    def _adopt_browser_client(self) -> None:
+        """Hand lightfall's data browser a warm-token NSLS-II reading catalog.
+
+        The data browser reads through :class:`TiledService`; without this it
+        falls back to ``DEFAULT_TILED_URL`` (the ALS server) and cannot reach
+        NSLS-II data. ``_tiled_login`` has just warmed the ``"nsls2"`` token
+        cache, so ``from_profile("nsls2")`` reads ride it with no re-prompt.
+
+        Build the read-scoped browse node here (on the login worker thread — a
+        network call) and adopt it into ``TiledService`` on the GUI thread
+        (``adopt_client`` starts a QTimer). Adopting runs *before* the
+        ``AUTHENTICATED`` transition, and ``adopt_client`` flips TiledService's
+        ``auth_mode`` to ``NONE`` — so its own session-driven connect (pointed
+        at the default server) early-returns instead of clobbering this client.
+
+        Best-effort: a browser that cannot connect must never fail the login.
+        """
+        try:
+            from tiled.client import from_profile
+
+            client = from_profile(TILED_PROFILE)
+            for key in _BROWSE_PATH:
+                client = client[key]
+        except Exception as exc:
+            logger.warning(
+                "NSLS-II data browser: could not open tiled {}: {}",
+                "/".join(_BROWSE_PATH),
+                exc,
+            )
+            return
+
+        def _adopt() -> None:
+            try:
+                from lightfall.services.tiled_service import TiledService
+
+                TiledService.get_instance().adopt_client(client, url=TILED_URI)
+                logger.info(
+                    "NSLS-II data browser adopted tiled {}", "/".join(_BROWSE_PATH)
+                )
+            except Exception as exc:
+                logger.warning("NSLS-II data browser: adopt_client failed: {}", exc)
+
+        invoke_in_main_thread(_adopt)
 
     async def logout(self, session: Any) -> None:
         return None

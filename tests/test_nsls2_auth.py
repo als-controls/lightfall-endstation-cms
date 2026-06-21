@@ -105,9 +105,9 @@ def test_authenticate_adopts_browser_client_on_success():
 
     class _Provider(NSLS2TiledAuthProvider):
         def _tiled_login(self, username, password):
-            return True
+            return object()  # a (fake) authenticated client
 
-        def _adopt_browser_client(self):
+        def _adopt_browser_client(self, client):
             calls["adopt"] += 1
 
     session = asyncio.run(_Provider().authenticate(username="rond", password="pw"))
@@ -121,21 +121,49 @@ def test_authenticate_skips_browser_adopt_on_login_failure():
 
     class _Provider(NSLS2TiledAuthProvider):
         def _tiled_login(self, username, password):
-            return False
+            return None
 
-        def _adopt_browser_client(self):
+        def _adopt_browser_client(self, client):
             calls["adopt"] += 1
 
     assert asyncio.run(_Provider().authenticate(username="rond", password="pw")) is None
     assert calls["adopt"] == 0
 
 
-def test_adopt_browser_client_adopts_warm_reading_node(monkeypatch):
-    """_adopt_browser_client opens from_profile(nsls2)[cms][raw] (reusing the
-    duo-warmed token) and hands it to TiledService.adopt_client."""
+def test_authenticate_threads_login_client_to_adopt():
+    """The authenticated client from _tiled_login must be handed to
+    _adopt_browser_client — NOT discarded. This is the seam that makes the data
+    browser reuse the duo-warmed session instead of an anonymous client."""
+    seen = {}
+    sentinel = object()
+
+    class _Provider(NSLS2TiledAuthProvider):
+        def _tiled_login(self, username, password):
+            return sentinel
+
+        def _adopt_browser_client(self, client):
+            seen["client"] = client
+
+    session = asyncio.run(_Provider().authenticate(username="rond", password="pw"))
+    assert session is not None
+    assert seen["client"] is sentinel
+
+
+def test_adopt_browser_client_navigates_the_login_client(monkeypatch):
+    """_adopt_browser_client navigates the AUTHENTICATED client passed in
+    (login's duo-warmed client) down [cms][raw] and hands that node to
+    TiledService.adopt_client. It must NOT build a fresh from_profile() client
+    (which would be anonymous and list zero runs)."""
     import tiled.client as tiled_client
 
     import lightfall_endstation_cms.auth.nsls2_provider as mod
+
+    # A fresh from_profile() here is the bug: fail loudly if anyone calls it.
+    def _forbidden(*a, **k):
+        raise AssertionError("must reuse the login client, not call from_profile()")
+
+    monkeypatch.setattr(tiled_client, "from_profile", _forbidden)
+    monkeypatch.setattr(mod, "invoke_in_main_thread", lambda fn, *a, **k: fn(*a, **k))
 
     class _Node:
         def __init__(self, path=()):
@@ -144,8 +172,7 @@ def test_adopt_browser_client_adopts_warm_reading_node(monkeypatch):
         def __getitem__(self, key):
             return _Node((*self.path, key))
 
-    monkeypatch.setattr(tiled_client, "from_profile", lambda name: _Node((name,)))
-    monkeypatch.setattr(mod, "invoke_in_main_thread", lambda fn, *a, **k: fn(*a, **k))
+    authed = _Node(("AUTHED_ROOT",))
 
     adopted = {}
 
@@ -158,21 +185,20 @@ def test_adopt_browser_client_adopts_warm_reading_node(monkeypatch):
 
     monkeypatch.setattr(svc.TiledService, "get_instance", classmethod(lambda cls: _FakeService()))
 
-    mod.NSLS2TiledAuthProvider()._adopt_browser_client()
+    mod.NSLS2TiledAuthProvider()._adopt_browser_client(authed)
 
-    assert adopted["client"].path == (mod.TILED_PROFILE, *mod._BROWSE_PATH)
+    # Navigated from the AUTHENTICATED client, through the browse path.
+    assert adopted["client"].path == ("AUTHED_ROOT", *mod._BROWSE_PATH)
     assert adopted["url"] == mod.TILED_URI
 
 
-def test_adopt_browser_client_is_best_effort(monkeypatch):
-    """A browser that can't connect must never raise into the login flow."""
-    import tiled.client as tiled_client
-
+def test_adopt_browser_client_is_best_effort():
+    """A browser node that can't be opened must never raise into the login flow."""
     import lightfall_endstation_cms.auth.nsls2_provider as mod
 
-    def _boom(name):
-        raise RuntimeError("no tiled profile")
+    class _Boom:
+        def __getitem__(self, key):
+            raise RuntimeError("node unavailable")
 
-    monkeypatch.setattr(tiled_client, "from_profile", _boom)
-    # Must not raise.
-    mod.NSLS2TiledAuthProvider()._adopt_browser_client()
+    # Must not raise even though navigating the client blows up.
+    mod.NSLS2TiledAuthProvider()._adopt_browser_client(_Boom())

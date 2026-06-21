@@ -179,9 +179,22 @@ class NSLS2BeamStatusService(QObject):
                     *ALL_PVS, connection_state_callback=self._on_connection
                 )
             )
+            from caproto import ChannelType
+
             self._subs = []
             for pv in self._pvs:
-                data_type = "string" if pv.name in STRING_PVS else None
+                # caproto's subscribe(data_type=...) accepts None (native), a
+                # ChannelType enum, or a DBR *category* string ("native",
+                # "time", ...). The literal "string" is none of these and threw
+                # KeyError in _fill_defaults on the activate_subscriptions
+                # thread, killing the subscription. Request the STRING channel
+                # type for the string/enum PVs so the monitor response decodes
+                # to a Python str (see _decode); other PVs use the native type.
+                # NOTE: DBR_STRING is capped at 40 chars, so the long-string
+                # "$" message PVs (OP{n}Message.VAL$) truncate at 40; reading
+                # them as native CHAR + assembling the array is a follow-up if
+                # full operator messages are needed.
+                data_type = ChannelType.STRING if pv.name in STRING_PVS else None
                 sub = pv.subscribe(data_type=data_type)
                 sub.add_callback(self._on_monitor)
                 self._subs.append(sub)

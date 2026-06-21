@@ -20,13 +20,18 @@ def test_create_backend_returns_happi_backend():
     assert plugin.name == "cms_profile_collection"
     backend = plugin.create_backend()
     assert isinstance(backend, HappiBackend)
-    # Backend is pointed at the packaged CMS happi DB, scoped to CMS, and loads
-    # metadata only (instantiate="none"): ophyd objects are NOT created at
-    # startup, so 00-startup's EpicsSignalBase.set_defaults() still runs first.
-    # The bootstrap's injection step constructs them after set_defaults.
+    # Ordinary post-login happi backend: background instantiation lets the
+    # DeviceConnectionManager construct the ophyd objects and set live status
+    # (devices auto-initialize instead of staying UNKNOWN). No kernel injection,
+    # and no pre-login set_defaults to sequence around (that workaround is gone).
     assert backend.path == _happi_db_path()
     assert backend._beamline == "CMS"
-    assert backend._instantiate_mode == "none"
+    assert backend._instantiate_mode == "background"
+    # The pre-login-armed SAM bootstrap trigger is no longer attached here — it
+    # armed too late under post-login loading (and would fire the bootstrap on a
+    # re-login against already-instantiated devices). SAM hosting is re-expressed
+    # as a catalog-driven post-login action instead.
+    assert getattr(backend, "_session_trigger", None) is None
 
 
 def test_packaged_happi_db_is_valid_json_with_cms_devices():

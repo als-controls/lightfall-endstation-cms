@@ -74,10 +74,16 @@ def test_start_is_idempotent_and_subscribes_all_pvs():
 
 
 def test_string_pvs_subscribe_as_string():
+    from caproto import ChannelType
+
     s = NSLS2BeamStatusService.get_instance()
     s.start()
     by_name = {sub.pv.name: sub.pv for sub in s._subs}
-    assert by_name[svc.SR_MODE_PV].data_type == "string"
+    # Must be the caproto ChannelType enum, NOT the literal "string": caproto's
+    # _fill_defaults rejects an arbitrary str (only None / ChannelType / a DBR
+    # category like "native" are valid), which crashed the subscription thread.
+    assert by_name[svc.SR_MODE_PV].data_type == ChannelType.STRING
+    assert not isinstance(by_name[svc.SR_MODE_PV].data_type, str)
     assert by_name[svc.SR_CURRENT_PV].data_type is None
 
 

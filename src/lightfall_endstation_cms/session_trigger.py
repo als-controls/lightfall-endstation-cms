@@ -64,22 +64,33 @@ class CMSSessionTrigger:
         self._device_names = list(device_names)
         self._deadline = self._now() + timeout_s
 
-        # Create a QTimer that calls _poll at each interval.  Importing Qt here
-        # (not at module top level) keeps the module importable in headless /
-        # test environments where the Qt event loop is not running.  Tests that
-        # drive _poll() directly don't need the timer to tick — creating it is
-        # harmless but never required.
+        # Re-arm (the documented retry path) must not leak the previous timer:
+        # tear down any existing one before creating a new one, or the orphan
+        # keeps ticking _poll forever (it can never stop itself once self._timer
+        # is overwritten).
+        if self._timer is not None:
+            try:
+                self._timer.stop()
+                self._timer.timeout.disconnect(self._poll)
+            except Exception:
+                pass
+            self._timer = None
+
+        # Create a QTimer that calls _poll at each interval. Only the import is
+        # guarded: a missing Qt binding (headless / pure unit test) is the one
+        # genuinely-expected absence — there the caller drives _poll() manually.
+        # QTimer construction itself does NOT need a running event loop, so any
+        # failure there is a real bug and must surface loudly rather than
+        # silently leaving the gate disarmed (SAM would never run).
         try:
             from qtpy.QtCore import QTimer
-
+        except ImportError:
+            self._timer = None
+        else:
             self._timer = QTimer()
             self._timer.setInterval(poll_ms)
             self._timer.timeout.connect(self._poll)
             self._timer.start()
-        except Exception:
-            # No Qt event loop available (e.g. pure unit tests); caller drives
-            # _poll() manually.
-            self._timer = None
 
         logger.info(
             "CMS session trigger armed — waiting for {} device(s): {}",

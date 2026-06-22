@@ -178,3 +178,20 @@ def test_poll_before_arm_is_noop(monkeypatch):
     trigger._poll()
 
     assert calls == [], "_poll before arm() must be a no-op"
+
+
+# ---------------------------------------------------------------------------
+# (f) re-arm (the retry path) tears down the previous timer — no leak
+# ---------------------------------------------------------------------------
+
+def test_rearm_tears_down_previous_timer(qtbot, monkeypatch):
+    _patch_devices(monkeypatch, {})  # devices never live -> timer would keep ticking
+    trigger = CMSSessionTrigger()
+
+    trigger.arm(["smx"], poll_ms=10_000, timeout_s=999.0)
+    first = trigger._timer
+    assert first is not None and first.isActive()
+
+    trigger.arm(["smx"], poll_ms=10_000, timeout_s=999.0)
+    assert trigger._timer is not first, "re-arm must install a new timer"
+    assert not first.isActive(), "the previous timer must be stopped (no leak)"

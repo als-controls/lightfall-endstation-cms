@@ -23,7 +23,7 @@ state instead of raising.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterable
 
 from loguru import logger
 
@@ -96,6 +96,48 @@ def find_kernel_objects(*base_class_names: str) -> dict[str, Any]:
 def sam_is_loaded() -> bool:
     """True if the SAM framework has been hosted in the kernel (``cms`` present)."""
     return get_kernel_object("cms") is not None
+
+
+def _device_catalog() -> Any | None:
+    """The DeviceCatalog singleton, or None if unavailable (e.g. tests, headless)."""
+    try:
+        from lightfall.devices import DeviceCatalog
+
+        return DeviceCatalog.get_instance()
+    except Exception:
+        logger.debug("DeviceCatalog unavailable in kernel_access")
+        return None
+
+
+def devices_by_name(names: Iterable[str]) -> dict[str, object]:
+    """Return a mapping of happi item name -> live ophyd device object.
+
+    Only names whose catalog entry exists AND has a non-None ``._ophyd_device``
+    are included.  Names that are absent from the catalog, or whose device has
+    not finished instantiating yet, are silently omitted (logged at DEBUG).
+
+    Args:
+        names: Iterable of happi item / profile variable names to look up.
+
+    Returns:
+        ``{name: ophyd_device}`` for every name that is currently live.
+    """
+    catalog = _device_catalog()
+    result: dict[str, object] = {}
+    if catalog is None:
+        logger.debug("devices_by_name: catalog unavailable, returning empty dict")
+        return result
+    for name in names:
+        info = catalog.get_device_by_name(name)
+        if info is None:
+            logger.debug("devices_by_name: '{}' not found in catalog", name)
+            continue
+        obj = getattr(info, "_ophyd_device", None)
+        if obj is None:
+            logger.debug("devices_by_name: '{}' not yet live (._ophyd_device is None)", name)
+            continue
+        result[name] = obj
+    return result
 
 
 def execute_in_console(code: str) -> bool:

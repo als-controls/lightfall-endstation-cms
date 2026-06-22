@@ -84,7 +84,7 @@ def test_panel_plugin_and_manifest():
     entry = next(p for p in manifest.plugins if p.name == "cms_sample")
     assert entry.type_name == "panel"
     assert entry.import_path.endswith("panels:CMSSamplePanelPlugin")
-    assert entry.preload is True
+    assert entry.preload is False
 
 
 # --- panel (needs a QApplication) ---------------------------------------

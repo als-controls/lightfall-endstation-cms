@@ -1,3 +1,16 @@
+"""Tests for CMSSessionTrigger bootstrap once-only and thread-marshaling behaviour.
+
+These tests verify properties of _run_bootstrap and invoke_in_main_thread that
+are independent of the devices-live gating mechanism.  The gating behaviour
+itself is covered by test_session_trigger_gating.py.
+
+The AUTHENTICATED-based _on_state_changed gate has been replaced by the
+devices-live poll gate (arm() + _poll()).  Tests that were written against
+_on_state_changed have been updated to drive _fire()/_run_bootstrap() directly,
+since those properties (once-only, retry-on-failure, GUI-thread marshaling)
+belong to _fire/_run_bootstrap, not to the gate that calls them.
+"""
+
 from __future__ import annotations
 
 import sys
@@ -17,6 +30,8 @@ def _run_inline(monkeypatch):
 
 
 def test_trigger_runs_bootstrap_once_on_success(monkeypatch):
+    """A successful bootstrap must fire at most once even if _fire() is called
+    multiple times (e.g., multiple poll ticks, or arm() called again)."""
     fake_shell = MagicMock(name="shell")
     fake_bootstrapper = MagicMock(name="bootstrapper")
     fake_bootstrapper.bootstrap.return_value = True  # success
@@ -27,16 +42,17 @@ def test_trigger_runs_bootstrap_once_on_success(monkeypatch):
     monkeypatch.setattr(st, "ProfileSessionBootstrapper", lambda backend=None: fake_bootstrapper)
 
     trigger = CMSSessionTrigger()
-    # Two AUTHENTICATED transitions; a successful bootstrap must run only once.
-    trigger._on_state_changed(st.AuthState.AUTHENTICATED)
-    trigger._on_state_changed(st.AuthState.AUTHENTICATED)
+    # Two _fire() calls (simulate two poll ticks that both see devices live);
+    # a successful bootstrap must run only once.
+    trigger._fire()
+    trigger._fire()
 
     fake_bootstrapper.bootstrap.assert_called_once_with(fake_shell)
 
 
 def test_trigger_retries_when_bootstrap_fails(monkeypatch):
     """A failed bootstrap (e.g. Redis down -> no RE) must NOT consume the
-    one-shot: a later AUTHENTICATED retries."""
+    one-shot: a later _fire() retries."""
     fake_shell = MagicMock(name="shell")
     fake_bootstrapper = MagicMock(name="bootstrapper")
     fake_bootstrapper.bootstrap.return_value = False  # failed load
@@ -48,8 +64,8 @@ def test_trigger_retries_when_bootstrap_fails(monkeypatch):
     monkeypatch.setattr(CMSSessionTrigger, "_notify_failure", staticmethod(lambda: None))
 
     trigger = CMSSessionTrigger()
-    trigger._on_state_changed(st.AuthState.AUTHENTICATED)  # fails
-    trigger._on_state_changed(st.AuthState.AUTHENTICATED)  # retries
+    trigger._fire()   # fails
+    trigger._fire()   # retries
 
     assert fake_bootstrapper.bootstrap.call_count == 2
     assert trigger._done is False
@@ -57,11 +73,11 @@ def test_trigger_retries_when_bootstrap_fails(monkeypatch):
 
 def test_bootstrap_is_marshaled_to_main_thread(monkeypatch):
     """Regression: the bootstrap must be dispatched via invoke_in_main_thread,
-    NOT run inline on the (background) thread that emits state_changed.
+    NOT run inline on whatever thread calls _fire().
 
-    state_changed is emitted from the login worker thread; running the bootstrap
-    there creates QWidgets / imports qtconsole off the GUI thread, which
-    deadlocks on the import lock against the main-thread proactive panel init.
+    _poll() / _fire() may be called from a QTimer on the GUI thread, but the
+    original constraint (no cross-thread QWidget creation, no import-lock
+    deadlock) is preserved by keeping the invoke_in_main_thread wrapper.
     """
     import lightfall_endstation_cms.session_trigger as st
 
@@ -71,7 +87,7 @@ def test_bootstrap_is_marshaled_to_main_thread(monkeypatch):
     monkeypatch.setattr(CMSSessionTrigger, "_get_shell", lambda self: (_ for _ in ()).throw(AssertionError("ran inline")))
 
     trigger = CMSSessionTrigger()
-    trigger._on_state_changed(st.AuthState.AUTHENTICATED)
+    trigger._fire()
 
     # The work was handed to the main-thread invoker, not executed inline.
     assert dispatched == [trigger._run_bootstrap]

@@ -153,3 +153,35 @@ def test_decode_handles_response_shapes():
     # bare scalar (int): data[0] raises TypeError → fallback to data itself
     result = NSLS2BeamStatusService._decode("pv", _Resp(5))
     assert result == 5
+
+
+def test_long_string_message_pvs_subscribe_as_char():
+    from caproto import ChannelType
+
+    s = NSLS2BeamStatusService.get_instance()
+    s.start()
+    by_name = {sub.pv.name: sub.pv for sub in s._subs}
+    # OP{n}Message.VAL$ are long-string ".VAL$" fields: a DBR_STRING request
+    # truncates at 40 chars, so they must be read as a native CHAR waveform.
+    assert by_name[svc.OPS_MSG1_PV].data_type == ChannelType.CHAR
+    assert by_name[svc.OPS_MSG2_PV].data_type == ChannelType.CHAR
+    # the short enum/status PVs stay DBR_STRING
+    assert by_name[svc.SR_MODE_PV].data_type == ChannelType.STRING
+
+
+def test_decode_long_string_char_array_assembles_full_message():
+    # A CHAR waveform: byte values, NUL-terminated, longer than the 40-char
+    # DBR_STRING cap. The full message must be assembled (cut at the NUL).
+    msg = "Beam dump: RF trip on cavity 3, recovery in progress, ETA ~30 min"
+    assert len(msg) > 40  # would be truncated under DBR_STRING
+    raw = list(msg.encode()) + [0, 0, 7]  # NUL terminator + trailing junk
+    result = NSLS2BeamStatusService._decode(svc.OPS_MSG1_PV, _Resp(raw))
+    assert result == msg
+
+
+def test_decode_long_string_accepts_bytes_and_empty():
+    assert (
+        NSLS2BeamStatusService._decode(svc.OPS_MSG2_PV, _Resp(b"hello\x00xx"))
+        == "hello"
+    )
+    assert NSLS2BeamStatusService._decode(svc.OPS_MSG1_PV, _Resp([0, 0, 0])) == ""

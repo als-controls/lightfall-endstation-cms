@@ -36,10 +36,13 @@ ALL_PVS: tuple[str, ...] = (
     OPS_MSG2_PV,
 )
 
-# Enum / long-string PVs that should be requested as strings over CA.
-STRING_PVS: frozenset[str] = frozenset(
-    {SR_MODE_PV, SR_SHUTTER_PV, TOPOFF_PV, OPS_MSG1_PV, OPS_MSG2_PV}
-)
+# Short enum / status PVs requested as DBR_STRING over CA.
+STRING_PVS: frozenset[str] = frozenset({SR_MODE_PV, SR_SHUTTER_PV, TOPOFF_PV})
+
+# Long-string ".VAL$" message PVs. DBR_STRING caps at 40 chars, so these are
+# requested as a native CHAR waveform and assembled past the cap (see
+# _decode_long_string).
+LONG_STRING_PVS: frozenset[str] = frozenset({OPS_MSG1_PV, OPS_MSG2_PV})
 
 # Substring (case-insensitive) in SR-OPS{}Shutter-Sts meaning beam is available.
 _SHUTTER_OPEN_TOKEN = "open"
@@ -56,6 +59,28 @@ def _safe_float(value: object) -> float:
         return float(value)  # type: ignore[arg-type]
     except (ValueError, TypeError):
         return 0.0
+
+
+def _decode_long_string(data: object) -> str:
+    """Assemble a CHAR-waveform long string ('.VAL$') into a Python str.
+
+    A long-string field arrives as a NUL-terminated array of byte values;
+    caproto may hand it over as a list/array of ints or as bytes. Cut at the
+    first NUL and decode -- this is what lifts the 40-char DBR_STRING cap.
+    """
+    if isinstance(data, str):
+        return data.split("\x00", 1)[0]
+    if isinstance(data, (bytes, bytearray)):
+        raw = bytes(data)
+    else:
+        try:
+            raw = bytes(int(c) & 0xFF for c in data)
+        except TypeError:
+            return str(data)
+    nul = raw.find(0)
+    if nul != -1:
+        raw = raw[:nul]
+    return raw.decode(errors="replace")
 
 
 @dataclass
@@ -184,17 +209,17 @@ class NSLS2BeamStatusService(QObject):
             self._subs = []
             for pv in self._pvs:
                 # caproto's subscribe(data_type=...) accepts None (native), a
-                # ChannelType enum, or a DBR *category* string ("native",
-                # "time", ...). The literal "string" is none of these and threw
-                # KeyError in _fill_defaults on the activate_subscriptions
-                # thread, killing the subscription. Request the STRING channel
-                # type for the string/enum PVs so the monitor response decodes
-                # to a Python str (see _decode); other PVs use the native type.
-                # NOTE: DBR_STRING is capped at 40 chars, so the long-string
-                # "$" message PVs (OP{n}Message.VAL$) truncate at 40; reading
-                # them as native CHAR + assembling the array is a follow-up if
-                # full operator messages are needed.
-                data_type = ChannelType.STRING if pv.name in STRING_PVS else None
+                # ChannelType enum, or a DBR *category* string ("native", ...).
+                # Short enum/status PVs use DBR_STRING so the response decodes
+                # to a Python str. The ".VAL$" message PVs are long strings:
+                # DBR_STRING would truncate them at 40 chars, so request the
+                # native CHAR waveform and assemble it in _decode.
+                if pv.name in LONG_STRING_PVS:
+                    data_type = ChannelType.CHAR
+                elif pv.name in STRING_PVS:
+                    data_type = ChannelType.STRING
+                else:
+                    data_type = None
                 sub = pv.subscribe(data_type=data_type)
                 sub.add_callback(self._on_monitor)
                 self._subs.append(sub)
@@ -228,8 +253,10 @@ class NSLS2BeamStatusService(QObject):
 
     @staticmethod
     def _decode(pv_name: str, response) -> object:
-        """Decode a caproto monitor response into a Python scalar."""
+        """Decode a caproto monitor response into a Python value."""
         data = getattr(response, "data", response)
+        if pv_name in LONG_STRING_PVS:
+            return _decode_long_string(data)
         try:
             value = data[0]
         except (TypeError, IndexError, KeyError):

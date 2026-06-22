@@ -19,10 +19,18 @@ def test_all_pvs_tuple_has_eight_unique_entries():
     assert len(set(svc.ALL_PVS)) == 8
 
 
-def test_string_pvs_are_the_enum_and_message_pvs():
+def test_string_pvs_are_the_short_enum_pvs():
     assert svc.STRING_PVS == frozenset(
-        {svc.SR_MODE_PV, svc.SR_SHUTTER_PV, svc.TOPOFF_PV, svc.OPS_MSG1_PV, svc.OPS_MSG2_PV}
+        {svc.SR_MODE_PV, svc.SR_SHUTTER_PV, svc.TOPOFF_PV}
     )
+
+
+def test_message_pvs_are_long_strings_not_dbr_string():
+    # The ".VAL$" message PVs read as CHAR waveforms, not DBR_STRING (which
+    # would truncate them at 40 chars).
+    assert svc.LONG_STRING_PVS == frozenset({svc.OPS_MSG1_PV, svc.OPS_MSG2_PV})
+    assert svc.OPS_MSG1_PV not in svc.STRING_PVS
+    assert svc.OPS_MSG2_PV not in svc.STRING_PVS
 
 
 def test_apply_numeric_pvs():

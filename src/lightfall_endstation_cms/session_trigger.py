@@ -1,24 +1,32 @@
-"""Run the CMS profile bootstrap once the user authenticates."""
+"""Run the CMS profile bootstrap once all named happi devices are live."""
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from lightfall.utils.threads import invoke_in_main_thread
 from loguru import logger
 
-from lightfall.auth.session import AuthState, SessionManager
-from lightfall.utils.threads import invoke_in_main_thread
-
+from lightfall_endstation_cms import kernel_access
 from lightfall_endstation_cms.bootstrap import ProfileSessionBootstrapper
 
 
 class CMSSessionTrigger:
-    """Arms a one-shot profile bootstrap on the first AUTHENTICATED transition.
+    """Arms a one-shot profile bootstrap once the named CMS devices are live.
 
-    The bootstrap runs the profile's infrastructure scripts to adopt the live
-    ``RunEngine`` + Tiled client, injects the happi devices into the kernel, and
-    runs the SAM framework. The device backend is passed through so its ophyd
-    instances can be injected under their profile variable names.
+    Instead of gating on the ``AUTHENTICATED`` SessionManager transition (which
+    fires before the device catalog has finished background-instantiating ophyd
+    objects), this trigger polls :func:`~lightfall_endstation_cms.kernel_access
+    .devices_by_name` at a configurable interval until all requested devices
+    report a live ``._ophyd_device``, then fires the bootstrap.
+
+    If the deadline passes before all devices become live the bootstrap still
+    runs in *degraded* mode (some devices may be offline) so the session is
+    never silently blocked.
+
+    The device backend is passed through so its ophyd instances can be injected
+    under their profile variable names.
     """
 
     def __init__(self, backend: Any = None) -> None:
@@ -26,9 +34,124 @@ class CMSSessionTrigger:
         self._done = False        # a bootstrap has SUCCEEDED — stop retrying
         self._running = False     # a bootstrap is in progress — block re-entry
 
-    def arm(self) -> None:
-        SessionManager.get_instance().state_changed.connect(self._on_state_changed)
-        logger.info("CMS session trigger armed (waiting for NSLS-II login)")
+        # Set by arm(); None means arm() has not been called yet.
+        self._device_names: list[str] | None = None
+        self._deadline: float = 0.0
+        self._timer: Any = None   # QTimer instance, created lazily in arm()
+
+        # Injectable clock: tests override this to simulate elapsed time without
+        # sleeping.  The default is time.monotonic (never wall-clock, so it is
+        # unaffected by NTP adjustments and always strictly increasing).
+        self._now = time.monotonic
+
+    def arm(
+        self,
+        device_names: list[str],
+        *,
+        poll_ms: int = 500,
+        timeout_s: float = 60.0,
+    ) -> None:
+        """Start polling for device liveness.
+
+        Args:
+            device_names: Happi item names to wait for.  The bootstrap fires
+                when every name in this list has a live ophyd object, or when
+                the timeout expires (degraded).
+            poll_ms: Timer interval in milliseconds.
+            timeout_s: Seconds before the trigger fires in degraded mode even
+                if some devices are still missing.
+        """
+        self._device_names = list(device_names)
+        self._deadline = self._now() + timeout_s
+
+        # Create a QTimer that calls _poll at each interval.  Importing Qt here
+        # (not at module top level) keeps the module importable in headless /
+        # test environments where the Qt event loop is not running.  Tests that
+        # drive _poll() directly don't need the timer to tick — creating it is
+        # harmless but never required.
+        try:
+            from qtpy.QtCore import QTimer
+
+            self._timer = QTimer()
+            self._timer.setInterval(poll_ms)
+            self._timer.timeout.connect(self._poll)
+            self._timer.start()
+        except Exception:
+            # No Qt event loop available (e.g. pure unit tests); caller drives
+            # _poll() manually.
+            self._timer = None
+
+        logger.info(
+            "CMS session trigger armed — waiting for {} device(s): {}",
+            len(self._device_names),
+            ", ".join(self._device_names),
+        )
+
+    def _poll(self) -> None:
+        """Single poll step — called by QTimer or directly by tests.
+
+        Checks device liveness and fires the bootstrap when all devices are live
+        or the deadline has passed.  Safe to call before ``arm()`` (no-op).
+        """
+        if self._done or self._running:
+            # Already fired or in progress — stop the timer and return.
+            if self._timer is not None:
+                try:
+                    self._timer.stop()
+                except Exception:
+                    pass
+            return
+
+        if self._device_names is None:
+            # arm() has not been called yet.
+            return
+
+        live = kernel_access.devices_by_name(self._device_names)
+        missing = [n for n in self._device_names if n not in live]
+
+        if not missing:
+            # All requested devices are live — nominal path.
+            if self._timer is not None:
+                try:
+                    self._timer.stop()
+                except Exception:
+                    pass
+            self._fire()
+            return
+
+        if self._now() >= self._deadline:
+            # Timed out waiting — fire in degraded mode anyway so the session
+            # is never silently blocked by an offline device.
+            if self._timer is not None:
+                try:
+                    self._timer.stop()
+                except Exception:
+                    pass
+            logger.warning(
+                "CMS session trigger: timed out waiting for device(s): {}. "
+                "Running bootstrap in degraded mode.",
+                ", ".join(missing),
+            )
+            self._fire()
+            return
+
+        # Not all live yet and deadline not reached — wait for the next tick.
+
+    def _fire(self) -> None:
+        """Marshal the bootstrap onto the GUI thread (once-only).
+
+        CRITICAL: the bootstrap creates QWidgets (the IPython panel), starts an
+        in-process kernel and imports qtconsole, and pumps the Qt event loop —
+        all of which MUST happen on the GUI thread.  Running it on any other
+        thread (a) is illegal Qt cross-thread widget creation and (b) races the
+        main thread's proactive panel-init import of qtconsole, deadlocking on
+        the Python import lock (observed on ws5: MainThread stuck in importlib
+        acquire under IPythonPanel._setup_ui).  Marshal the whole bootstrap
+        onto the main thread.
+        """
+        if self._done or self._running:
+            return
+        invoke_in_main_thread(self._run_bootstrap)
 
     def _get_shell(self) -> Any | None:
         """Obtain the live console shell, creating the kernel if needed."""
@@ -45,37 +168,19 @@ class CMSSessionTrigger:
             return None
         return panel.shell
 
-    def _on_state_changed(self, new_state: Any, old_state: Any = None) -> None:
-        # SessionManager.state_changed emits (new_state, old_state); the second
-        # arg is optional so tests can call with just the new state.
-        if self._done or self._running or new_state != AuthState.AUTHENTICATED:
-            return
-
-        # CRITICAL: this signal is emitted from the BACKGROUND login thread
-        # (SessionManager.attach_session runs in a QThreadFuture and calls
-        # _set_state(AUTHENTICATED) there). The bootstrap creates QWidgets (the
-        # IPython panel), starts an in-process kernel and imports qtconsole, and
-        # pumps the Qt event loop — all of which MUST happen on the GUI thread.
-        # Running it on the login thread (a) is illegal Qt cross-thread widget
-        # creation and (b) races the main thread's proactive panel-init import
-        # of qtconsole, deadlocking on the Python import lock (observed on ws5:
-        # MainThread stuck in importlib acquire under IPythonPanel._setup_ui).
-        # Marshal the whole bootstrap onto the main thread.
-        invoke_in_main_thread(self._run_bootstrap)
-
     def _run_bootstrap(self) -> None:
         """Run the profile bootstrap. MUST execute on the GUI thread."""
-        # Re-check on the main thread: several AUTHENTICATED emits could have
-        # been marshaled before the first ran.
+        # Re-check on the main thread: several _fire() calls could have been
+        # marshaled before the first ran.
         if self._done or self._running:
             return
 
         shell = self._get_shell()
         if shell is None:
             logger.error("CMS bootstrap: console shell unavailable; cannot run profile")
-            return  # not done — allow a retry on a later AUTHENTICATED
+            return  # not done — the caller may retry by calling arm() again
 
-        logger.info("CMS login detected — running profile-collection bootstrap")
+        logger.info("CMS devices live — running profile-collection bootstrap")
         self._running = True
         try:
             ok = ProfileSessionBootstrapper(self._backend).bootstrap(shell)
@@ -90,8 +195,8 @@ class CMSSessionTrigger:
             self._done = True
             logger.info("CMS profile bootstrap complete")
         else:
-            # Leave _done False so fixing the cause and re-logging in retries.
-            logger.error("CMS profile bootstrap did not complete; re-login to retry")
+            # Leave _done False so re-arming / retrying is possible.
+            logger.error("CMS profile bootstrap did not complete")
             self._notify_failure()
 
     @staticmethod

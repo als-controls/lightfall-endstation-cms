@@ -154,7 +154,9 @@ class ProfileSessionBootstrapper:
             logger.debug("Could not create profile progress dialog", exc_info=True)
             return None
 
-    def run_profile(self, shell: Any, scripts: list[Path], label: str = "profile") -> None:
+    def run_profile(
+        self, shell: Any, scripts: list[Path], label: str = "profile", after_each: Any = None
+    ) -> None:
         """Execute the given profile *scripts* into the kernel shell (beamline)."""
         if not scripts:
             return
@@ -195,6 +197,11 @@ class ProfileSessionBootstrapper:
                         )
                 except Exception:
                     logger.exception("Unexpected error running profile script {}", script.name)
+                if after_each is not None:
+                    try:
+                        after_each(script, shell.user_ns)
+                    except Exception:
+                        logger.exception("after_each hook failed after {}", script.name)
                 # Keep the GUI alive/updating between scripts.
                 self._pump_events()
         finally:
@@ -547,6 +554,42 @@ class ProfileSessionBootstrapper:
                     "Could not seed profile import '{}'", mod, exc_info=True
                 )
 
+    @staticmethod
+    def _redirect_config_paths(script: "Path", namespace: dict[str, Any]) -> None:
+        """Point 90-bluesky's CMS_CONFIG_FILENAME at a readable copy off-account.
+
+        90-bluesky hardcodes the config under xf11bm's home; it is first *read*
+        by 97-user's config_load(). Production runs as xf11bm (readable, so this
+        is a no-op there). When Lightfall runs as another account (e.g. rpandolfi
+        for dev/validation) that path is unreadable, so after 90 defines it and
+        before 97 reads it, redirect to the world-readable shared copy. No
+        profile edit; the override is purely in the live namespace.
+        """
+        if not script.name.startswith("90-"):
+            return
+        path = namespace.get("CMS_CONFIG_FILENAME")
+        if not path or os.access(path, os.R_OK):
+            return  # readable (e.g. running as xf11bm) -> keep the profile's path
+        fallback = os.environ.get(
+            "CMS_CONFIG_FILENAME_FALLBACK",
+            "/nsls2/data/cms/shared/config/bluesky/profile_collection/startup/.cms_config",
+        )
+        if os.access(fallback, os.R_OK):
+            namespace["CMS_CONFIG_FILENAME"] = fallback
+            logger.warning(
+                "CMS_CONFIG_FILENAME {} not readable as this user; redirected to "
+                "the shared copy {} (config_save will be read-only off-account)",
+                path,
+                fallback,
+            )
+        else:
+            logger.error(
+                "CMS_CONFIG_FILENAME {} not readable and no readable fallback at "
+                "{}; config_load() will fail",
+                path,
+                fallback,
+            )
+
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.
 
@@ -563,5 +606,5 @@ class ProfileSessionBootstrapper:
         self._seed_namespace(shell.user_ns)
 
         sam = self._profile_scripts(self._keep("sam"))
-        self.run_profile(shell, sam, label="sam")
+        self.run_profile(shell, sam, label="sam", after_each=self._redirect_config_paths)
         return True

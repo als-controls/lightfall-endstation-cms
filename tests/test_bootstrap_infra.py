@@ -116,3 +116,29 @@ def test_seed_profile_imports_does_not_overwrite():
     ns: dict = {"os": sentinel}
     boot.ProfileSessionBootstrapper._seed_profile_imports(ns)
     assert ns["os"] is sentinel
+
+
+def test_redirect_config_paths_redirects_when_unreadable(monkeypatch, tmp_path):
+    readable = tmp_path / ".cms_config"
+    readable.write_text("x")
+    monkeypatch.setenv("CMS_CONFIG_FILENAME_FALLBACK", str(readable))
+    ns = {"CMS_CONFIG_FILENAME": "/nonexistent/xf11bm/.cms_config"}
+    script = types.SimpleNamespace(name="90-bluesky.py")
+    boot.ProfileSessionBootstrapper._redirect_config_paths(script, ns)
+    assert ns["CMS_CONFIG_FILENAME"] == str(readable)
+
+
+def test_redirect_config_paths_noop_when_readable(tmp_path):
+    readable = tmp_path / ".cms_config"
+    readable.write_text("x")
+    ns = {"CMS_CONFIG_FILENAME": str(readable)}  # readable -> xf11bm case, untouched
+    script = types.SimpleNamespace(name="90-bluesky.py")
+    boot.ProfileSessionBootstrapper._redirect_config_paths(script, ns)
+    assert ns["CMS_CONFIG_FILENAME"] == str(readable)
+
+
+def test_redirect_config_paths_only_after_90():
+    ns = {"CMS_CONFIG_FILENAME": "/nonexistent/x"}
+    script = types.SimpleNamespace(name="94-sample.py")
+    boot.ProfileSessionBootstrapper._redirect_config_paths(script, ns)
+    assert ns["CMS_CONFIG_FILENAME"] == "/nonexistent/x"

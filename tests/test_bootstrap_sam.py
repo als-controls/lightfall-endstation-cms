@@ -105,7 +105,7 @@ def test_bootstrap_runs_phases_in_order(monkeypatch):
     monkeypatch.setattr(bs, "_profile_scripts", lambda keep: sorted(keep))
     monkeypatch.setattr(
         bs, "run_profile",
-        lambda shell, scripts, label="": calls.append(("run", label)),
+        lambda shell, scripts, label="", after_each=None: calls.append(("run", label)),
     )
     monkeypatch.setattr(
         bs, "adopt_reexpressed_infra", lambda ns: calls.append(("infra",)) or True
@@ -125,7 +125,7 @@ def test_bootstrap_aborts_when_adopt_fails(monkeypatch):
     monkeypatch.setattr(bs, "_profile_scripts", lambda keep: sorted(keep))
     monkeypatch.setattr(
         bs, "run_profile",
-        lambda shell, scripts, label="": calls.append(("run", label)),
+        lambda shell, scripts, label="", after_each=None: calls.append(("run", label)),
     )
     monkeypatch.setattr(
         bs, "adopt_reexpressed_infra", lambda ns: False

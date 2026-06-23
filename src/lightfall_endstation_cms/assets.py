@@ -69,6 +69,28 @@ def assets_path() -> str:
     )
 
 
+def proposal_path() -> str:
+    """Return the per-proposal data directory for CMS.
+
+    ``{_PROPOSALS_ROOT}/{cycle}/{data_session}/`` derived from the shared
+    RunEngine's ``RE.md`` -- i.e. :func:`assets_path` without the ``assets/``
+    leaf. Re-expresses 00-startup's ``proposal_path()`` (referenced by the SAM
+    framework). Raises if the proposal context is not yet available.
+    """
+    from lightfall.acquire import get_engine
+
+    md = getattr(getattr(get_engine(), "RE", None), "md", None) or {}
+    cycle = md.get("cycle")
+    data_session = md.get("data_session")
+    if cycle and data_session:
+        return f"{_PROPOSALS_ROOT}/{cycle}/{data_session}/"
+
+    raise RuntimeError(
+        "CMS proposal_path is unresolved: RE.md has no 'cycle'/'data_session' "
+        "(select a proposal first)."
+    )
+
+
 def wire_assets_path() -> None:
     """Point the CMS detector modules' ``assets_path`` hook at :func:`assets_path`.
 

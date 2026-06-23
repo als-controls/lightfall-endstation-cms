@@ -107,12 +107,15 @@ def test_bootstrap_runs_phases_in_order(monkeypatch):
         bs, "run_profile",
         lambda shell, scripts, label="": calls.append(("run", label)),
     )
-    monkeypatch.setattr(bs, "adopt", lambda ns: calls.append(("adopt",)) or True)
+    monkeypatch.setattr(
+        bs, "adopt_reexpressed_infra", lambda ns: calls.append(("infra",)) or True
+    )
     monkeypatch.setattr(bs, "_inject_devices", lambda ns: calls.append(("inject",)) or 0)
 
     shell = SimpleNamespace(user_ns={})
     assert bs.bootstrap(shell) is True
-    assert calls == [("run", "infra"), ("adopt",), ("inject",), ("run", "sam")]
+    # Re-express infra -> inject devices -> run only the SAM scripts.
+    assert calls == [("infra",), ("inject",), ("run", "sam")]
 
 
 def test_bootstrap_aborts_when_adopt_fails(monkeypatch):
@@ -124,10 +127,12 @@ def test_bootstrap_aborts_when_adopt_fails(monkeypatch):
         bs, "run_profile",
         lambda shell, scripts, label="": calls.append(("run", label)),
     )
-    monkeypatch.setattr(bs, "adopt", lambda ns: False)  # no RE -> abort
+    monkeypatch.setattr(
+        bs, "adopt_reexpressed_infra", lambda ns: False
+    )  # no RE -> abort
     monkeypatch.setattr(bs, "_inject_devices", lambda ns: calls.append(("inject",)) or 0)
 
     shell = SimpleNamespace(user_ns={})
     assert bs.bootstrap(shell) is False
-    # Infra ran, then adopt failed -> no injection, no SAM phase.
-    assert calls == [("run", "infra")]
+    # Infra adoption failed -> no injection, no SAM phase.
+    assert calls == []

@@ -415,6 +415,100 @@ class ProfileSessionBootstrapper:
             namespace.setdefault(key, value)
         logger.info("Seeded SAM config globals: beamline_stage={}", seeds["beamline_stage"])
 
+    def adopt_reexpressed_infra(self, namespace: dict[str, Any]) -> bool:
+        """Re-express 00-startup's infra onto Lightfall's RE; seed the namespace.
+
+        Replaces running the 00-03 infra scripts and adopting a separate profile
+        RunEngine (spec section 3). Attaches configure_base's bits -- redis
+        ``RE.md``, the kafka publisher, ``SupplementalData``, the ``assets_path``
+        hook, and the tiled document writer -- to ``get_engine().RE`` via the
+        standalone helpers, then seeds the kernel namespace with the names the
+        SAM scripts reference (``RE``, ``cat``/``db``/``mig``/
+        ``tiled_writing_client``, ``assets_path``/``proposal_path``, ``sd``).
+
+        Every step is best-effort (the helpers never raise); only a missing
+        RunEngine -- nothing to seed -- returns False.
+        """
+        from lightfall_endstation_cms.assets import (
+            assets_path,
+            proposal_path,
+            wire_assets_path,
+        )
+        from lightfall_endstation_cms.kafka_publisher import wire_kafka_publisher
+        from lightfall_endstation_cms.run_engine_md import wire_redis_metadata
+        from lightfall_endstation_cms.supplemental_data import wire_supplemental_data
+        from lightfall_endstation_cms.tiled_writer import wire_tiled_writer
+
+        engine = get_engine()
+        if getattr(engine, "RE", None) is None:
+            logger.error("Lightfall engine has no RE; cannot wire CMS infra")
+            return False
+
+        # Attach configure_base's bits to Lightfall's own RE (all idempotent).
+        wire_redis_metadata()
+        wire_kafka_publisher()
+        sd = wire_supplemental_data()
+        wire_assets_path()
+        wire_tiled_writer()
+
+        # Console RE is a GUI-safe proxy (as the old adopt() did).
+        namespace["RE"] = ConsoleREProxy(engine)
+        namespace.setdefault("assets_path", assets_path)
+        namespace.setdefault("proposal_path", proposal_path)
+        if sd is not None:
+            namespace.setdefault("sd", sd)
+
+        # Seed the Tiled read clients (cat/db/mig/tiled_writing_client).
+        self._seed_tiled_namespace(namespace)
+
+        logger.info(
+            "Re-expressed CMS infra onto Lightfall's RE and seeded the namespace"
+        )
+        return True
+
+    @staticmethod
+    def _seed_tiled_namespace(namespace: dict[str, Any]) -> None:
+        """Seed cat/db/mig/tiled_writing_client from the CMS service key.
+
+        Mirrors 00-startup: ``tiled_reading_client = cat = from_profile(...)
+        ["cms"]["raw"]``, ``mig = [...]["cms/migration"]``, ``db = Broker(cat)``.
+        Uses the service API key (sees all cms/raw records). Best-effort: a
+        missing key or unreachable server must not abort the bootstrap.
+        """
+        api_key = os.environ.get("TILED_BLUESKY_WRITING_API_KEY_CMS")
+        if not api_key:
+            logger.warning(
+                "TILED_BLUESKY_WRITING_API_KEY_CMS not set; SAM cat/db/mig lookups "
+                "will be unavailable"
+            )
+            return
+        try:
+            from tiled.client import from_uri
+
+            client = from_uri(TILED_URI, api_key=api_key)
+            cat = client["cms"]["raw"]
+            namespace.setdefault("tiled_reading_client", cat)
+            namespace.setdefault("cat", cat)
+            namespace.setdefault("tiled_writing_client", cat)
+            try:
+                namespace.setdefault("mig", client["cms/migration"])
+            except Exception:
+                logger.debug("cms/migration node unavailable", exc_info=True)
+            try:
+                from databroker import Broker
+
+                namespace.setdefault("db", Broker(cat))
+            except Exception:
+                logger.debug(
+                    "databroker.Broker unavailable; 'db' not seeded", exc_info=True
+                )
+            logger.info("Seeded Tiled read clients (cat/db/mig) for the SAM namespace")
+        except Exception:
+            logger.exception(
+                "Could not seed Tiled read clients; SAM cat/db/mig lookups will be "
+                "unavailable"
+            )
+
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.
 
@@ -423,10 +517,7 @@ class ProfileSessionBootstrapper:
         per-script handler in :meth:`run_profile`), so the session still comes
         up with RE + injected devices even if part of the framework doesn't load.
         """
-        infra = self._profile_scripts(self._keep("infra"))
-        self.run_profile(shell, infra, label="infra")
-
-        if not self.adopt(shell.user_ns):
+        if not self.adopt_reexpressed_infra(shell.user_ns):
             return False
 
         # Devices + config globals first, so the SAM framework finds them on load.

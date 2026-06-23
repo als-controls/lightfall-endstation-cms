@@ -461,6 +461,11 @@ class ProfileSessionBootstrapper:
         # Seed the Tiled read clients (cat/db/mig/tiled_writing_client).
         self._seed_tiled_namespace(namespace)
 
+        # Seed the module-level imports the infra scripts (00-03, not run under
+        # Arch B) leak into the shared namespace; SAM scripts reference them
+        # un-imported (e.g. 90-bluesky's os.path.join).
+        self._seed_profile_imports(namespace)
+
         logger.info(
             "Re-expressed CMS infra onto Lightfall's RE and seeded the namespace"
         )
@@ -508,6 +513,39 @@ class ProfileSessionBootstrapper:
                 "Could not seed Tiled read clients; SAM cat/db/mig lookups will be "
                 "unavailable"
             )
+
+    @staticmethod
+    def _seed_profile_imports(namespace: dict[str, Any]) -> None:
+        """Seed the module-level imports 00-03 leak into the shared namespace.
+
+        The SAM scripts were written to run after the infra scripts in one
+        IPython namespace and reference modules those scripts import at top level
+        -- ``os.path.join`` in 90-bluesky, etc. -- without re-importing. Arch B
+        does not run 00-03, so replicate the common leaked ``import`` modules.
+        Best-effort and non-overwriting (a script that imports its own wins).
+        """
+        import importlib
+
+        # The plain ``import X`` modules 00-03 establish (see their top-of-file
+        # imports). ``from ... import *`` helpers (pyOlog) are not replicated;
+        # box validation surfaces any that a SAM script actually needs.
+        for mod in (
+            "os",
+            "numpy",
+            "ophyd",
+            "asyncio",
+            "queue",
+            "threading",
+            "contextlib",
+        ):
+            if mod in namespace:
+                continue
+            try:
+                namespace[mod] = importlib.import_module(mod)
+            except Exception:
+                logger.debug(
+                    "Could not seed profile import '{}'", mod, exc_info=True
+                )
 
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.

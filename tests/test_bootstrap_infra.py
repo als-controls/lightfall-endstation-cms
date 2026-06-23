@@ -98,3 +98,21 @@ def test_seed_tiled_namespace_seeds_clients(monkeypatch):
     assert ns["tiled_writing_client"] == "raw-node-raw"
     assert ns["mig"] == "mig-node"
     assert ns["db"] == "broker(raw-node-raw)"
+
+
+def test_seed_profile_imports_seeds_os_and_stdlib():
+    import os as _os
+
+    ns: dict = {}
+    boot.ProfileSessionBootstrapper._seed_profile_imports(ns)
+    # 90-bluesky's os.path.join relies on 00-startup's leaked ``import os``.
+    assert ns["os"] is _os
+    for mod in ("asyncio", "queue", "threading", "contextlib"):
+        assert mod in ns
+
+
+def test_seed_profile_imports_does_not_overwrite():
+    sentinel = object()
+    ns: dict = {"os": sentinel}
+    boot.ProfileSessionBootstrapper._seed_profile_imports(ns)
+    assert ns["os"] is sentinel

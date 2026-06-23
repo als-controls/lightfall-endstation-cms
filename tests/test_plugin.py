@@ -15,7 +15,21 @@ def test_is_device_backend_plugin():
     assert CMSProfileCollectionPlugin.type_name == "device_backend"
 
 
-def test_create_backend_returns_happi_backend():
+class _FakeTrigger:
+    """No-op stand-in for CMSSessionTrigger (avoids a real QTimer in tests)."""
+
+    def __init__(self, backend=None):
+        self.backend = backend
+        self.armed_with = None
+
+    def arm(self, device_names, **kwargs):
+        self.armed_with = (list(device_names), kwargs)
+
+
+def test_create_backend_returns_happi_backend(monkeypatch):
+    import lightfall_endstation_cms.session_trigger as st_mod
+
+    monkeypatch.setattr(st_mod, "CMSSessionTrigger", _FakeTrigger)
     plugin = CMSProfileCollectionPlugin()
     assert plugin.name == "cms_profile_collection"
     backend = plugin.create_backend()
@@ -32,6 +46,24 @@ def test_create_backend_returns_happi_backend():
     # re-login against already-instantiated devices). SAM hosting is re-expressed
     # as a catalog-driven post-login action instead.
     assert getattr(backend, "_session_trigger", None) is None
+    # The trigger is held on the PLUGIN (not the backend) so its timer survives.
+    assert isinstance(plugin._session_trigger, _FakeTrigger)
+
+
+def test_create_backend_arms_devices_live_gate(monkeypatch):
+    import lightfall_endstation_cms.session_trigger as st_mod
+
+    monkeypatch.setattr(st_mod, "CMSSessionTrigger", _FakeTrigger)
+    monkeypatch.setenv("CMS_BOOTSTRAP_WAIT_DEVICES", "smx, pilatus2M")
+
+    plugin = CMSProfileCollectionPlugin()
+    plugin.create_backend()
+
+    trig = plugin._session_trigger
+    assert isinstance(trig, _FakeTrigger)
+    names, kwargs = trig.armed_with
+    assert names == ["smx", "pilatus2M"]
+    assert "timeout_s" in kwargs
 
 
 def test_packaged_happi_db_is_valid_json_with_cms_devices():

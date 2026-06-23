@@ -36,21 +36,37 @@ ALL_PVS: tuple[str, ...] = (
     OPS_MSG2_PV,
 )
 
-# Short enum / status PVs requested as DBR_STRING over CA.
-STRING_PVS: frozenset[str] = frozenset({SR_MODE_PV, SR_SHUTTER_PV, TOPOFF_PV})
+# Short enum / status PVs requested as DBR_STRING over CA. NOTE: SR_SHUTTER_PV
+# is NOT here -- it is a numeric PV (1.0 = open, 0.0 = closed), read natively
+# and interpreted numerically (see shutter_means_available).
+STRING_PVS: frozenset[str] = frozenset({SR_MODE_PV, TOPOFF_PV})
 
 # Long-string ".VAL$" message PVs. DBR_STRING caps at 40 chars, so these are
 # requested as a native CHAR waveform and assembled past the cap (see
 # _decode_long_string).
 LONG_STRING_PVS: frozenset[str] = frozenset({OPS_MSG1_PV, OPS_MSG2_PV})
 
-# Substring (case-insensitive) in SR-OPS{}Shutter-Sts meaning beam is available.
+# Enum-string form (case-insensitive) of a shutter status that means open.
 _SHUTTER_OPEN_TOKEN = "open"
 
 
 def shutter_means_available(value: object) -> bool:
-    """Return True if a shutter-status value indicates beam is available."""
-    return _SHUTTER_OPEN_TOKEN in str(value).strip().lower()
+    """Return True if a shutter-status value indicates beam is available.
+
+    SR-OPS{}Shutter-Sts is numeric (1.0 = open, 0.0 = closed), so any nonzero
+    value means beam is available. (It is sometimes read back as a DBR_STRING
+    like ``"1.0000"``, which parses the same way.) An enum-string form
+    containing "open" is also accepted so the check stays robust across
+    deployments -- the previous code ONLY did the "open" substring test, so a
+    numeric ``"1.0000"`` never matched and beam always read as Unavailable.
+    """
+    text = str(value).strip().lower()
+    if _SHUTTER_OPEN_TOKEN in text:
+        return True
+    try:
+        return float(value) != 0.0
+    except (ValueError, TypeError):
+        return False
 
 
 def _safe_float(value: object) -> float:
@@ -104,6 +120,24 @@ class NSLS2BeamData:
         return "\n".join(m for m in (self.ops_message_1, self.ops_message_2) if m)
 
 
+# Beam is "nominal" (healthy user operations) above these thresholds. When
+# nominal the status bar shows just the green icon; below them (or when beam is
+# unavailable) it also shows the current/lifetime text so operators notice
+# off-nominal values at a glance. Full detail is always in the tooltip. Tunable.
+NOMINAL_CURRENT_MA = 450.0
+NOMINAL_LIFETIME_H = 8.9
+
+
+def is_nominal(data: NSLS2BeamData) -> bool:
+    """True when beam is available and both current and lifetime are above the
+    nominal thresholds (healthy user operations)."""
+    return (
+        data.beam_available
+        and data.beam_current > NOMINAL_CURRENT_MA
+        and data.lifetime > NOMINAL_LIFETIME_H
+    )
+
+
 def apply_pv_value(data: NSLS2BeamData, pv_name: str, value: object) -> None:
     """Apply a single decoded PV value to ``data`` in place.
 
@@ -117,8 +151,9 @@ def apply_pv_value(data: NSLS2BeamData, pv_name: str, value: object) -> None:
     elif pv_name == SR_MODE_PV:
         data.mode = str(value)
     elif pv_name == SR_SHUTTER_PV:
-        data.shutter_status = str(value)
         data.beam_available = shutter_means_available(value)
+        # Raw PV is numeric (1.0/0.0); show a human-readable label in the UI.
+        data.shutter_status = "Open" if data.beam_available else "Closed"
     elif pv_name == TOPOFF_PV:
         data.topoff_state = str(value)
     elif pv_name == NEXT_INJ_PV:

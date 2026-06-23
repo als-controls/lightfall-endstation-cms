@@ -17,7 +17,10 @@ from lightfall.ui.theme import ThemeManager
 from lightfall.ui.toast import ToastManager
 from lightfall.utils.logging import logger
 
-from lightfall_endstation_cms.services.nsls2_beam_status import NSLS2BeamStatusService
+from lightfall_endstation_cms.services.nsls2_beam_status import (
+    NSLS2BeamStatusService,
+    is_nominal,
+)
 
 if TYPE_CHECKING:
     from lightfall_endstation_cms.services.nsls2_beam_status import NSLS2BeamData
@@ -124,7 +127,14 @@ class NSLS2BeamStatusPlugin(StatusBarPlugin):
         color = colors.success if data.beam_available else colors.error
 
         self.set_icon(qta.icon("ri.sun-line", color=color))
-        self.set_text(f"{data.beam_current:.0f} mA | {data.lifetime:.1f}h")
+        # When everything is nominal, keep the bar quiet -- show just the green
+        # icon. Off-nominal (low current/lifetime, or beam down) keeps the
+        # numbers visible so operators notice. Full detail is always in the
+        # tooltip.
+        if is_nominal(data):
+            self.set_text("")
+        else:
+            self.set_text(f"{data.beam_current:.0f} mA | {data.lifetime:.1f}h")
         self.set_color(color)
         self.set_tooltip(self._build_tooltip(data))
 

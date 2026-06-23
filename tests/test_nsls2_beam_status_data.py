@@ -20,9 +20,10 @@ def test_all_pvs_tuple_has_eight_unique_entries():
 
 
 def test_string_pvs_are_the_short_enum_pvs():
-    assert svc.STRING_PVS == frozenset(
-        {svc.SR_MODE_PV, svc.SR_SHUTTER_PV, svc.TOPOFF_PV}
-    )
+    # SR_SHUTTER_PV is no longer a DBR_STRING PV -- it is numeric (read natively
+    # and interpreted as 1.0 open / 0.0 closed).
+    assert svc.STRING_PVS == frozenset({svc.SR_MODE_PV, svc.TOPOFF_PV})
+    assert svc.SR_SHUTTER_PV not in svc.STRING_PVS
 
 
 def test_message_pvs_are_long_strings_not_dbr_string():
@@ -82,3 +83,49 @@ def test_unknown_pv_is_ignored():
     data = NSLS2BeamData()
     apply_pv_value(data, "Some:Other-PV", 5.0)
     assert data == NSLS2BeamData()
+
+
+def test_shutter_means_available_numeric():
+    # SR-OPS{}Shutter-Sts is numeric: any nonzero value (or "1.0000") = open.
+    assert shutter_means_available(1.0) is True
+    assert shutter_means_available("1.0000") is True
+    assert shutter_means_available(0.0) is False
+    assert shutter_means_available("0.0000") is False
+
+
+def test_shutter_pv_sets_open_closed_label():
+    data = NSLS2BeamData()
+    apply_pv_value(data, svc.SR_SHUTTER_PV, 1.0)
+    assert data.beam_available is True
+    assert data.shutter_status == "Open"
+    apply_pv_value(data, svc.SR_SHUTTER_PV, 0.0)
+    assert data.beam_available is False
+    assert data.shutter_status == "Closed"
+
+
+def test_is_nominal_thresholds():
+    from lightfall_endstation_cms.services.nsls2_beam_status import (
+        NOMINAL_CURRENT_MA,
+        NOMINAL_LIFETIME_H,
+        is_nominal,
+    )
+
+    # Healthy beam: available and above both thresholds.
+    assert is_nominal(
+        NSLS2BeamData(beam_available=True, beam_current=500.0, lifetime=10.0)
+    )
+    # Beam down -> not nominal regardless of numbers.
+    assert not is_nominal(
+        NSLS2BeamData(beam_available=False, beam_current=500.0, lifetime=10.0)
+    )
+    # At-threshold is not above-threshold (strict >).
+    assert not is_nominal(
+        NSLS2BeamData(
+            beam_available=True, beam_current=NOMINAL_CURRENT_MA, lifetime=9.1
+        )
+    )
+    assert not is_nominal(
+        NSLS2BeamData(
+            beam_available=True, beam_current=500.0, lifetime=NOMINAL_LIFETIME_H
+        )
+    )

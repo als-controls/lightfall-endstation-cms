@@ -63,5 +63,11 @@ manifest = PluginManifest(
             import_path="lightfall_endstation_cms.statusbar.nsls2_beam_status:NSLS2BeamStatusPlugin",
             metadata={"beamline": "11-BM CMS"},
         ),
+        PluginEntry(
+            type_name="agent",
+            name="cms_site_notes",
+            import_path="lightfall_endstation_cms.agents.cms_notes:CMSSiteNotesAgent",
+            metadata={"beamline": "11-BM CMS"},
+        ),
     ],
 )

@@ -24,9 +24,14 @@ TILED_URI = "https://tiled.nsls2.bnl.gov"
 # from_profile("nsls2") reads ride it (rather than from_uri(TILED_URI), which
 # could key the cache differently if the profile URI normalizes differently).
 TILED_PROFILE = "nsls2"
-# Tiled node the data browser opens (read-scoped, via the duo-warmed token).
-# CMS data lives under cms/raw; adjust here if the browse root should differ.
+# Tiled node the data browser opens (read-scoped). CMS data lives under
+# cms/raw; adjust here if the browse root should differ.
 _BROWSE_PATH = ("cms", "raw")
+# Service/admin API key the data browser reads through. This is the SAME key
+# 00-startup.py builds ``tiled_writing_client`` with, and it is the read
+# identity the browser MUST use — see ``_adopt_browser_client`` for why a
+# per-user Duo identity lists zero records.
+_READ_API_KEY_ENV = "TILED_BLUESKY_WRITING_API_KEY_CMS"
 
 
 class NSLS2TiledAuthProvider(AuthProvider):
@@ -63,7 +68,7 @@ class NSLS2TiledAuthProvider(AuthProvider):
             )
         return spec
 
-    def _tiled_login(self, username: str, password: str) -> bool:
+    def _tiled_login(self, username: str, password: str) -> Any | None:
         """Exchange username+password for a tiled token. BEAMLINE SEAM.
 
         THIS IS THE LIVE PRODUCTION IMPLEMENTATION. Against the real NSLS-II
@@ -79,7 +84,9 @@ class NSLS2TiledAuthProvider(AuthProvider):
         provider mode/structure must be confirmed against the real NSLS-II
         tiled instance at the beamline (spec §9, open item 1).
 
-        Returns True if a token was obtained and cached; False otherwise.
+        Returns the authenticated tiled client on success (so the caller can
+        reuse this exact duo-authenticated session for the data browser instead
+        of rebuilding an anonymous one); returns None on failure.
         """
         from tiled.client import from_profile
         from tiled.client.context import password_grant
@@ -99,7 +106,9 @@ class NSLS2TiledAuthProvider(AuthProvider):
         )
         context.configure_auth(tokens, remember_me=True)
         logger.info("NSLS-II tiled login complete for '{}'", username)
-        return True
+        # Return the *authenticated* client. Its child nodes share this context,
+        # so navigating client["cms"]["raw"] later stays authenticated.
+        return client
 
     async def authenticate(
         self,
@@ -115,17 +124,19 @@ class NSLS2TiledAuthProvider(AuthProvider):
             return None
 
         try:
-            ok = self._tiled_login(username, password)
+            client = self._tiled_login(username, password)
         except Exception:
             logger.exception("NSLS-II tiled login failed")
             return None
-        if not ok:
+        if not client:
             return None
 
-        # The login just warmed the "nsls2" tiled token cache. Hand lightfall's
-        # data browser a read-scoped NSLS-II catalog (reusing that token) so it
-        # does not fall back to the default (ALS) Tiled server. Best-effort.
-        self._adopt_browser_client()
+        # The login just produced a duo-authenticated tiled client. Hand
+        # lightfall's data browser a read-scoped NSLS-II catalog by reusing
+        # *that same authenticated client* (not a fresh from_profile(), which
+        # would be anonymous and list zero runs) so it does not fall back to the
+        # default (ALS) Tiled server. Best-effort.
+        self._adopt_browser_client(client)
 
         # Real API: User.roles is set[Role], not a singular role= kwarg.
         # The brief's role=Role.USER is adjusted to roles={Role.USER}.
@@ -137,42 +148,88 @@ class NSLS2TiledAuthProvider(AuthProvider):
         )
         return Session(user=user)
 
-    def _adopt_browser_client(self) -> None:
-        """Hand lightfall's data browser a warm-token NSLS-II reading catalog.
+    def _adopt_browser_client(self, client: Any) -> None:
+        """Hand lightfall's data browser the admin-key NSLS-II reading catalog.
 
         The data browser reads through :class:`TiledService`; without this it
         falls back to ``DEFAULT_TILED_URL`` (the ALS server) and cannot reach
-        NSLS-II data. ``_tiled_login`` has just warmed the ``"nsls2"`` token
-        cache, so ``from_profile("nsls2")`` reads ride it with no re-prompt.
+        NSLS-II data.
 
-        Build the read-scoped browse node here (on the login worker thread — a
-        network call) and adopt it into ``TiledService`` on the GUI thread
-        (``adopt_client`` starts a QTimer). Adopting runs *before* the
-        ``AUTHENTICATED`` transition, and ``adopt_client`` flips TiledService's
-        ``auth_mode`` to ``NONE`` — so its own session-driven connect (pointed
-        at the default server) early-returns instead of clobbering this client.
+        CRITICAL — read identity. The browse node is opened with the CMS
+        service/admin API key (``TILED_BLUESKY_WRITING_API_KEY_CMS``), NOT the
+        per-user Duo identity carried by ``client``. Tiled enforces a
+        *per-entry* access policy: every run stores an ``access_blob`` (stamped
+        by AccessStamper) and the server filters out any entry that does not
+        authorize the *reading principal*. A per-user Duo identity (e.g.
+        ``rpandolfi``) authorizes none of the millions of existing ``cms/raw``
+        records, so reading through it lists **zero** runs even though the user
+        holds the global ``read:data``/``read:metadata`` scopes — this is the
+        empty-browser symptom (``<Catalog {}>``, "Loaded 0 of 0 records"). The
+        service principal behind the admin key bypasses the per-entry policy
+        and sees every record. The Duo login is still required: it
+        authenticates the operator and warms the token cache for the write
+        path; it simply must not be the browser's *read* identity.
+
+        Open the read node here (on the login worker thread — a network call)
+        and adopt it into ``TiledService`` on the GUI thread (``adopt_client``
+        starts a QTimer). Adopting runs *before* the ``AUTHENTICATED``
+        transition, and ``adopt_client`` flips TiledService's ``auth_mode`` to
+        ``NONE`` — so its own session-driven connect (pointed at the default
+        server) early-returns instead of clobbering this client.
 
         Best-effort: a browser that cannot connect must never fail the login.
+        If the service key is absent (it is required by 00-startup, so this
+        should not happen in a real session) we fall back to the Duo ``client``
+        — read-filtered, but still pointed at NSLS-II rather than the ALS
+        default — with a loud warning.
         """
-        try:
-            from tiled.client import from_profile
+        import os
 
-            client = from_profile(TILED_PROFILE)
-            for key in _BROWSE_PATH:
-                client = client[key]
-        except Exception as exc:
+        node = None
+        api_key = os.environ.get(_READ_API_KEY_ENV)
+        if api_key:
+            try:
+                from tiled.client import from_uri
+
+                node = from_uri(TILED_URI, api_key=api_key)
+                for key in _BROWSE_PATH:
+                    node = node[key]
+            except Exception as exc:
+                logger.warning(
+                    "NSLS-II data browser: could not open admin-key tiled {}: {}",
+                    "/".join(_BROWSE_PATH),
+                    exc,
+                )
+                node = None
+        else:
             logger.warning(
-                "NSLS-II data browser: could not open tiled {}: {}",
-                "/".join(_BROWSE_PATH),
-                exc,
+                "NSLS-II data browser: {} is not set; falling back to the "
+                "per-user Duo identity, which the per-entry access policy "
+                "filters to zero records",
+                _READ_API_KEY_ENV,
             )
-            return
+
+        if node is None:
+            # Last resort (no service key): the Duo-authenticated login client.
+            # Read-filtered to the user's own entries, but better than leaving
+            # the browser pointed at the ALS default server.
+            try:
+                node = client
+                for key in _BROWSE_PATH:
+                    node = node[key]
+            except Exception as exc:
+                logger.warning(
+                    "NSLS-II data browser: could not open tiled {}: {}",
+                    "/".join(_BROWSE_PATH),
+                    exc,
+                )
+                return
 
         def _adopt() -> None:
             try:
                 from lightfall.services.tiled_service import TiledService
 
-                TiledService.get_instance().adopt_client(client, url=TILED_URI)
+                TiledService.get_instance().adopt_client(node, url=TILED_URI)
                 logger.info(
                     "NSLS-II data browser adopted tiled {}", "/".join(_BROWSE_PATH)
                 )

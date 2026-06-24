@@ -142,3 +142,20 @@ def test_redirect_config_paths_only_after_90():
     script = types.SimpleNamespace(name="94-sample.py")
     boot.ProfileSessionBootstrapper._redirect_config_paths(script, ns)
     assert ns["CMS_CONFIG_FILENAME"] == "/nonexistent/x"
+
+
+def test_seed_device_classes_seeds_shutter_and_camera_classes():
+    from lightfall_endstation_cms.devices import area_detectors, shutters
+
+    ns: dict = {}
+    boot.ProfileSessionBootstrapper._seed_device_classes(ns)
+    assert ns["TriState"] is shutters.TriState
+    assert ns["TwoButtonShutterNC"] is shutters.TwoButtonShutterNC
+    assert ns["StandardProsilica"] is area_detectors.StandardProsilica
+
+
+def test_seed_device_classes_does_not_overwrite():
+    sentinel = object()
+    ns = {"TriState": sentinel}
+    boot.ProfileSessionBootstrapper._seed_device_classes(ns)
+    assert ns["TriState"] is sentinel

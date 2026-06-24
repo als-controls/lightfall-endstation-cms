@@ -473,6 +473,11 @@ class ProfileSessionBootstrapper:
         # un-imported (e.g. 90-bluesky's os.path.join).
         self._seed_profile_imports(namespace)
 
+        # Seed device CLASSES the SAM scripts build with (e.g. 81-beam's
+        # CMS_Beamline_XR uses TriState vacuum valves / StandardProsilica
+        # cameras) that come from the device-defining scripts (10-52) we skip.
+        self._seed_device_classes(namespace)
+
         logger.info(
             "Re-expressed CMS infra onto Lightfall's RE and seeded the namespace"
         )
@@ -589,6 +594,44 @@ class ProfileSessionBootstrapper:
                 path,
                 fallback,
             )
+
+    # Device classes the SAM scripts instantiate directly (the device-defining
+    # scripts 10-52 are not run; happi provides instances, but 81-beam still
+    # builds CMS_Beamline_XR from these CLASSES). Sourced from our happi device
+    # modules. Confirmed by scanning the SAM set: only 81-beam references them.
+    _DEVICE_CLASS_SEEDS = {
+        "lightfall_endstation_cms.devices.shutters": ("TriState", "TwoButtonShutterNC"),
+        "lightfall_endstation_cms.devices.area_detectors": ("StandardProsilica",),
+    }
+
+    @classmethod
+    def _seed_device_classes(cls, namespace: dict[str, Any]) -> None:
+        """Seed the device classes the SAM scripts reference into the namespace.
+
+        81-beam instantiates these to build the beamline hierarchy (vacuum
+        valves, diagnostic cameras). Importing the modules defines classes only
+        -- no ophyd instances, so no CA connections here. Best-effort and
+        non-overwriting (a script that defines its own name wins).
+        """
+        import importlib
+
+        for mod_name, names in cls._DEVICE_CLASS_SEEDS.items():
+            try:
+                mod = importlib.import_module(mod_name)
+            except Exception:
+                logger.exception(
+                    "Could not import {} to seed device classes", mod_name
+                )
+                continue
+            for name in names:
+                if name in namespace:
+                    continue
+                obj = getattr(mod, name, None)
+                if obj is None:
+                    logger.warning("{} has no '{}' to seed", mod_name, name)
+                    continue
+                namespace[name] = obj
+        logger.info("Seeded device classes for the SAM scripts")
 
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.

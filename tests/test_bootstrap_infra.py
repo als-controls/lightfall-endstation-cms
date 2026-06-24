@@ -179,3 +179,14 @@ def test_seed_ophyd_names_does_not_overwrite():
     ns = {"EpicsSignal": sentinel}
     boot.ProfileSessionBootstrapper._seed_ophyd_names(ns)
     assert ns["EpicsSignal"] is sentinel
+
+
+def test_seed_profile_imports_seeds_time_and_np_alias():
+    import numpy
+    import time as _time
+
+    ns: dict = {}
+    boot.ProfileSessionBootstrapper._seed_profile_imports(ns)
+    # 81-beam uses time.* and np.* un-imported (it has zero top-level imports).
+    assert ns["time"] is _time
+    assert ns["np"] is numpy

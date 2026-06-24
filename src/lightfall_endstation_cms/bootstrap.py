@@ -547,6 +547,16 @@ class ProfileSessionBootstrapper:
         # box validation surfaces any that a SAM script actually needs.
         for mod in (
             "os",
+            "sys",
+            "time",
+            "math",
+            "json",
+            "re",
+            "functools",
+            "itertools",
+            "collections",
+            "hashlib",
+            "shutil",
             "numpy",
             "ophyd",
             "asyncio",
@@ -561,6 +571,18 @@ class ProfileSessionBootstrapper:
             except Exception:
                 logger.debug(
                     "Could not seed profile import '{}'", mod, exc_info=True
+                )
+
+        # Aliases the legacy device scripts leak (import numpy as np, import
+        # pandas as pds/pd). 81-beam (zero imports) uses np heavily; 90/94 use pds.
+        for alias, mod_name in (("np", "numpy"), ("pd", "pandas"), ("pds", "pandas")):
+            if alias in namespace:
+                continue
+            try:
+                namespace[alias] = importlib.import_module(mod_name)
+            except Exception:
+                logger.debug(
+                    "Could not seed alias '{}' = {}", alias, mod_name, exc_info=True
                 )
 
     @staticmethod

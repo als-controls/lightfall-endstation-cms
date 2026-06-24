@@ -585,6 +585,17 @@ class ProfileSessionBootstrapper:
                     "Could not seed alias '{}' = {}", alias, mod_name, exc_info=True
                 )
 
+        # Bare epics functions the SAM scripts call un-imported (81-beam uses
+        # caget/caput heavily; leaked by 44-laserPTA's `from epics import ...`).
+        if "caget" not in namespace or "caput" not in namespace:
+            try:
+                from epics import caget, caput
+
+                namespace.setdefault("caget", caget)
+                namespace.setdefault("caput", caput)
+            except Exception:
+                logger.debug("Could not seed epics caget/caput", exc_info=True)
+
     @staticmethod
     def _redirect_config_paths(script: "Path", namespace: dict[str, Any]) -> None:
         """Point 90-bluesky's CMS_CONFIG_FILENAME at a readable copy off-account.

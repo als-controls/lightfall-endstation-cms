@@ -190,3 +190,13 @@ def test_seed_profile_imports_seeds_time_and_np_alias():
     # 81-beam uses time.* and np.* un-imported (it has zero top-level imports).
     assert ns["time"] is _time
     assert ns["np"] is numpy
+
+
+def test_seed_profile_imports_seeds_caget_caput():
+    from epics import caget, caput
+
+    ns: dict = {}
+    boot.ProfileSessionBootstrapper._seed_profile_imports(ns)
+    # 81-beam calls bare caget()/caput() (leaked from 44-laserPTA's epics import).
+    assert ns["caget"] is caget
+    assert ns["caput"] is caput

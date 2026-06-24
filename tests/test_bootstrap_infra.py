@@ -159,3 +159,23 @@ def test_seed_device_classes_does_not_overwrite():
     ns = {"TriState": sentinel}
     boot.ProfileSessionBootstrapper._seed_device_classes(ns)
     assert ns["TriState"] is sentinel
+
+
+def test_seed_ophyd_names_seeds_classes():
+    import ophyd
+
+    ns: dict = {}
+    boot.ProfileSessionBootstrapper._seed_ophyd_names(ns)
+    assert ns["EpicsSignal"] is ophyd.EpicsSignal
+    assert ns["EpicsSignalRO"] is ophyd.EpicsSignalRO
+    assert ns["EpicsMotor"] is ophyd.EpicsMotor
+    assert ns["Device"] is ophyd.Device
+    assert ns["Component"] is ophyd.Component
+    assert ns["Cpt"] is ophyd.Component  # alias
+
+
+def test_seed_ophyd_names_does_not_overwrite():
+    sentinel = object()
+    ns = {"EpicsSignal": sentinel}
+    boot.ProfileSessionBootstrapper._seed_ophyd_names(ns)
+    assert ns["EpicsSignal"] is sentinel

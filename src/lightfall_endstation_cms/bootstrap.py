@@ -478,6 +478,10 @@ class ProfileSessionBootstrapper:
         # cameras) that come from the device-defining scripts (10-52) we skip.
         self._seed_device_classes(namespace)
 
+        # Seed the bare ophyd names (EpicsSignal, Device, Cpt, ...) the SAM
+        # scripts use but never import (81-beam has zero top-level imports).
+        self._seed_ophyd_names(namespace)
+
         logger.info(
             "Re-expressed CMS infra onto Lightfall's RE and seeded the namespace"
         )
@@ -632,6 +636,41 @@ class ProfileSessionBootstrapper:
                     continue
                 namespace[name] = obj
         logger.info("Seeded device classes for the SAM scripts")
+
+    # ophyd names the SAM scripts reference but never import. 81-beam (zero
+    # top-level imports) inherited these from the legacy device scripts'
+    # `from ophyd import ...`. Confirmed by scanning the SAM set -- only these
+    # are referenced (the areaDetector/Signal/etc. names live only in the
+    # skipped device-defining scripts). (attr_on_ophyd, name_in_namespace).
+    _OPHYD_NAME_SEEDS = (
+        ("EpicsSignal", "EpicsSignal"),
+        ("EpicsSignalRO", "EpicsSignalRO"),
+        ("EpicsMotor", "EpicsMotor"),
+        ("Device", "Device"),
+        ("Component", "Component"),
+        ("Component", "Cpt"),
+    )
+
+    @classmethod
+    def _seed_ophyd_names(cls, namespace: dict[str, Any]) -> None:
+        """Seed the ophyd classes the SAM scripts reference un-imported.
+
+        Best-effort and non-overwriting (a script importing its own name wins).
+        """
+        try:
+            import ophyd
+        except Exception:
+            logger.exception("Could not import ophyd to seed its names")
+            return
+        for attr, alias in cls._OPHYD_NAME_SEEDS:
+            if alias in namespace:
+                continue
+            obj = getattr(ophyd, attr, None)
+            if obj is None:
+                logger.warning("ophyd has no '{}' to seed", attr)
+                continue
+            namespace[alias] = obj
+        logger.info("Seeded ophyd names for the SAM scripts")
 
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.

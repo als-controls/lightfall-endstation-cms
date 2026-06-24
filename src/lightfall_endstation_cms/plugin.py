@@ -46,23 +46,6 @@ def _happi_db_path() -> str:
         return str(path)
 
 
-def _bootstrap_wait_devices(backend: DeviceBackend) -> list[str]:
-    """Device names the SAM bootstrap waits to be live before it fires.
-
-    ``$CMS_BOOTSTRAP_WAIT_DEVICES`` (comma-separated) overrides; otherwise all
-    active happi devices. Tuning knob for the devices-live gate -- a smaller list
-    fires sooner; the gate falls back to degraded mode at the timeout regardless.
-    """
-    env = os.environ.get("CMS_BOOTSTRAP_WAIT_DEVICES")
-    if env is not None:
-        return [n.strip() for n in env.split(",") if n.strip()]
-    try:
-        return [info.name for info in backend.list_devices(active_only=True)]
-    except Exception:
-        logger.exception("Could not list active devices for the SAM gate")
-        return []
-
-
 def _bootstrap_timeout_s() -> float:
     """Seconds before the SAM bootstrap fires in degraded mode (env-tunable)."""
     try:
@@ -103,25 +86,24 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
         return backend
 
     def _arm_session_trigger(self, backend: DeviceBackend) -> None:
-        """Arm the devices-live gate that hosts the CMS profile (SAM phase).
+        """Arm the devices-loaded gate that hosts the CMS profile (SAM phase).
 
         Background device instantiation is async, so the bootstrap -- which
-        injects live ophyd objects and runs the SAM framework -- cannot run at
-        backend-creation time. CMSSessionTrigger polls until the named devices
-        are live, then fires ProfileSessionBootstrapper on the GUI thread. The
-        trigger is held on the plugin instance so its QTimer is not
-        garbage-collected. Best-effort: a failure to arm must not fail backend
-        creation (re-login retries).
+        injects the live ophyd objects and runs the SAM framework -- cannot run
+        at backend-creation time. CMSSessionTrigger waits for the
+        DeviceConnectionManager's ``all_connections_complete`` signal (the
+        "devices loaded" event), then fires ProfileSessionBootstrapper on the GUI
+        thread (which ensures the kernel and injects). The trigger is held on the
+        plugin instance so its deadline QTimer is not garbage-collected.
+        Best-effort: a failure to arm must not fail backend creation (re-login
+        retries).
         """
         try:
             from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
 
             trigger = CMSSessionTrigger(backend)
             self._session_trigger = trigger
-            trigger.arm(
-                _bootstrap_wait_devices(backend),
-                timeout_s=_bootstrap_timeout_s(),
-            )
+            trigger.arm(timeout_s=_bootstrap_timeout_s())
         except Exception:
             logger.exception(
                 "Could not arm the CMS session trigger; SAM hosting will not "

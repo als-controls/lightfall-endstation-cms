@@ -1,10 +1,18 @@
-"""Tests for the devices-live gate in CMSSessionTrigger._poll."""
+"""Tests for the devices-loaded gate in CMSSessionTrigger.
+
+The gate fires the profile bootstrap when the DeviceConnectionManager emits
+``all_connections_complete`` (the "devices are loaded" event), or when a
+degraded-mode deadline elapses first.  These drive a QApplication directly
+(rather than pytest-qt's qtbot) so they run in a runtime venv without the test
+extras; QApplication.instance() reuses pytest-qt's qapp under the full CI suite.
+"""
 
 from __future__ import annotations
 
 import sys
-import warnings
 from pathlib import Path
+
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
@@ -12,8 +20,27 @@ import lightfall_endstation_cms.session_trigger as st
 from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Fixtures / helpers
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _qapp():
+    """A QApplication so arm()'s deadline QTimer can be constructed/started."""
+    from PySide6.QtWidgets import QApplication
+
+    yield QApplication.instance() or QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def _reset_manager():
+    """Fresh DeviceConnectionManager singleton per test so subscriptions and
+    emitted signals don't bleed across tests."""
+    from lightfall.devices.connection_manager import DeviceConnectionManager
+
+    DeviceConnectionManager.reset_instance()
+    yield
+    DeviceConnectionManager.reset_instance()
+
 
 def _run_inline(monkeypatch):
     """Make invoke_in_main_thread run its callable synchronously in the test."""
@@ -23,11 +50,10 @@ def _run_inline(monkeypatch):
 def _fake_bootstrap(monkeypatch):
     """Stub _run_bootstrap so it records calls without touching the kernel.
 
-    Sets _done = True to simulate a successful bootstrap, matching what the real
-    implementation does on success.  This lets tests assert on _done and on the
-    once-only guard without needing a real IPython kernel.
+    Sets _done = True to mimic a successful bootstrap, so tests can assert on
+    the once-only guard without a real IPython kernel.
     """
-    calls = []
+    calls: list = []
 
     def _stub(self):
         calls.append(1)
@@ -37,161 +63,104 @@ def _fake_bootstrap(monkeypatch):
     return calls
 
 
-def _patch_devices(monkeypatch, live_mapping):
-    """Patch kernel_access.devices_by_name to return live_mapping for any names."""
-    monkeypatch.setattr(st.kernel_access, "devices_by_name", lambda names: {
-        k: v for k, v in live_mapping.items() if k in names
-    })
+def _emit_complete():
+    from lightfall.devices.connection_manager import DeviceConnectionManager
+
+    DeviceConnectionManager.get_instance().all_connections_complete.emit()
 
 
 # ---------------------------------------------------------------------------
-# (a) _poll does NOT fire while a requested device is not yet live
+# (a) arm() wires the gate to the connection manager's completion signal
 # ---------------------------------------------------------------------------
 
-def test_poll_does_not_fire_when_devices_missing(monkeypatch):
+def test_arm_subscribes_to_devices_loaded_signal(monkeypatch):
     calls = _fake_bootstrap(monkeypatch)
     _run_inline(monkeypatch)
 
-    # Only one of two devices is live
-    sentinel = object()
-    _patch_devices(monkeypatch, {"smx": sentinel})
+    trigger = CMSSessionTrigger()
+    trigger.arm(timeout_s=60.0)
+
+    _emit_complete()  # the real "devices are loaded" event
+
+    assert calls == [1], "bootstrap should fire when all connections complete"
+    assert trigger._done is True
+
+
+# ---------------------------------------------------------------------------
+# (b) does not fire before the completion signal arrives
+# ---------------------------------------------------------------------------
+
+def test_does_not_fire_before_devices_loaded(monkeypatch):
+    calls = _fake_bootstrap(monkeypatch)
+    _run_inline(monkeypatch)
 
     trigger = CMSSessionTrigger()
-    trigger.arm(["smx", "pilatus2M"], poll_ms=500, timeout_s=60.0)
+    trigger.arm(timeout_s=60.0)
 
-    # Well before deadline
-    trigger._now = lambda: trigger._deadline - 10.0
-
-    trigger._poll()
-
-    assert calls == [], "bootstrap should not fire when devices are still missing"
+    assert calls == [], "must not fire until devices are loaded"
     assert trigger._done is False
 
 
 # ---------------------------------------------------------------------------
-# (b) _poll fires exactly once when all requested devices are live
+# (c) repeated completion signals fire the bootstrap only once
 # ---------------------------------------------------------------------------
 
-def test_poll_fires_when_all_devices_live(monkeypatch):
+def test_fires_only_once_on_repeated_signal(monkeypatch):
     calls = _fake_bootstrap(monkeypatch)
     _run_inline(monkeypatch)
 
-    s1, s2 = object(), object()
-    _patch_devices(monkeypatch, {"smx": s1, "pilatus2M": s2})
-
     trigger = CMSSessionTrigger()
-    trigger.arm(["smx", "pilatus2M"], poll_ms=500, timeout_s=60.0)
+    trigger.arm(timeout_s=60.0)
 
-    # Well before deadline
-    trigger._now = lambda: trigger._deadline - 10.0
-
-    trigger._poll()
-
-    assert calls == [1], "bootstrap should fire exactly once when all devices are live"
-    assert trigger._done is True
-
-
-# ---------------------------------------------------------------------------
-# (c) repeated _poll calls after liveness fire only once (_done guard)
-# ---------------------------------------------------------------------------
-
-def test_poll_fires_only_once_after_live(monkeypatch):
-    calls = _fake_bootstrap(monkeypatch)
-    _run_inline(monkeypatch)
-
-    s1, s2 = object(), object()
-    _patch_devices(monkeypatch, {"smx": s1, "pilatus2M": s2})
-
-    trigger = CMSSessionTrigger()
-    trigger.arm(["smx", "pilatus2M"], poll_ms=500, timeout_s=60.0)
-    trigger._now = lambda: trigger._deadline - 10.0
-
-    # Multiple poll calls — must fire once only
-    trigger._poll()
-    trigger._poll()
-    trigger._poll()
+    _emit_complete()
+    _emit_complete()
+    _emit_complete()
 
     assert calls == [1], "_done guard must prevent re-firing"
-    assert trigger._done is True
 
 
 # ---------------------------------------------------------------------------
-# (d) on timeout with devices still missing, _poll fires anyway (degraded)
+# (d) the deadline fires the bootstrap in degraded mode
 # ---------------------------------------------------------------------------
 
-def test_poll_fires_degraded_on_timeout(monkeypatch):
+def test_fires_degraded_on_deadline(monkeypatch):
     calls = _fake_bootstrap(monkeypatch)
     _run_inline(monkeypatch)
 
-    # No devices live
-    _patch_devices(monkeypatch, {})
-
     trigger = CMSSessionTrigger()
-    trigger.arm(["smx", "pilatus2M"], poll_ms=500, timeout_s=60.0)
+    trigger.arm(timeout_s=60.0)
 
-    # Simulate time past the deadline
-    trigger._now = lambda: trigger._deadline + 1.0
+    trigger._on_deadline()  # simulate the deadline timer firing
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        trigger._poll()
-
-    assert calls == [1], "degraded bootstrap should fire on timeout"
+    assert calls == [1], "degraded bootstrap should fire on the deadline"
     assert trigger._done is True
 
 
-def test_poll_logs_missing_devices_on_timeout(monkeypatch, caplog):
-    """Timeout path must log a warning naming the missing devices."""
-    import logging
-
-    _fake_bootstrap(monkeypatch)
-    _run_inline(monkeypatch)
-
-    # smx is live but pilatus2M is not
-    sentinel = object()
-    _patch_devices(monkeypatch, {"smx": sentinel})
-
-    trigger = CMSSessionTrigger()
-    trigger.arm(["smx", "pilatus2M"], poll_ms=500, timeout_s=60.0)
-    trigger._now = lambda: trigger._deadline + 1.0
-
-    # Capture loguru output via stdlib logging propagation.
-    # If loguru doesn't propagate in tests, we still assert the trigger fired
-    # in degraded mode (best-effort logging check).
-    with caplog.at_level(logging.WARNING):
-        trigger._poll()
-
-    assert trigger._done is True
-
-
-# ---------------------------------------------------------------------------
-# (e) _poll is a no-op before arm() is called
-# ---------------------------------------------------------------------------
-
-def test_poll_before_arm_is_noop(monkeypatch):
+def test_deadline_is_noop_after_devices_loaded(monkeypatch):
     calls = _fake_bootstrap(monkeypatch)
     _run_inline(monkeypatch)
-    _patch_devices(monkeypatch, {"smx": object()})
 
     trigger = CMSSessionTrigger()
-    # Do NOT call arm() — _poll should be safe to call anyway (guard on _deadline)
-    trigger._poll()
+    trigger.arm(timeout_s=60.0)
 
-    assert calls == [], "_poll before arm() must be a no-op"
+    _emit_complete()        # fires (nominal)
+    trigger._on_deadline()  # must be a no-op now
+
+    assert calls == [1]
 
 
 # ---------------------------------------------------------------------------
-# (f) re-arm (the retry path) tears down the previous timer — no leak
+# (e) re-arm (the retry path) still fires exactly once (no duplicate subscribe)
 # ---------------------------------------------------------------------------
 
-def test_rearm_tears_down_previous_timer(qtbot, monkeypatch):
-    _patch_devices(monkeypatch, {})  # devices never live -> timer would keep ticking
+def test_rearm_still_fires_once(monkeypatch):
+    calls = _fake_bootstrap(monkeypatch)
+    _run_inline(monkeypatch)
+
     trigger = CMSSessionTrigger()
+    trigger.arm(timeout_s=60.0)
+    trigger.arm(timeout_s=60.0)  # re-arm must not leave a duplicate subscription
 
-    trigger.arm(["smx"], poll_ms=10_000, timeout_s=999.0)
-    first = trigger._timer
-    assert first is not None and first.isActive()
+    _emit_complete()
 
-    trigger.arm(["smx"], poll_ms=10_000, timeout_s=999.0)
-    assert trigger._timer is not first, "re-arm must install a new timer"
-    assert not first.isActive(), "the previous timer must be stopped (no leak)"
+    assert calls == [1], "re-arm must not cause a double fire"

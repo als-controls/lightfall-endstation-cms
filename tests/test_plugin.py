@@ -22,8 +22,8 @@ class _FakeTrigger:
         self.backend = backend
         self.armed_with = None
 
-    def arm(self, device_names, **kwargs):
-        self.armed_with = (list(device_names), kwargs)
+    def arm(self, **kwargs):
+        self.armed_with = kwargs
 
 
 def test_create_backend_returns_happi_backend(monkeypatch):
@@ -50,19 +50,20 @@ def test_create_backend_returns_happi_backend(monkeypatch):
     assert isinstance(plugin._session_trigger, _FakeTrigger)
 
 
-def test_create_backend_arms_devices_live_gate(monkeypatch):
+def test_create_backend_arms_gate_with_timeout(monkeypatch):
     import lightfall_endstation_cms.session_trigger as st_mod
 
     monkeypatch.setattr(st_mod, "CMSSessionTrigger", _FakeTrigger)
-    monkeypatch.setenv("CMS_BOOTSTRAP_WAIT_DEVICES", "smx, pilatus2M")
 
     plugin = CMSProfileCollectionPlugin()
     plugin.create_backend()
 
     trig = plugin._session_trigger
     assert isinstance(trig, _FakeTrigger)
-    names, kwargs = trig.armed_with
-    assert names == ["smx", "pilatus2M"]
+    # The gate no longer waits on a named device list — it waits on the
+    # connection manager's all_connections_complete signal, with a degraded
+    # deadline. arm() is called with just the timeout.
+    kwargs = trig.armed_with
     assert "timeout_s" in kwargs
 
 

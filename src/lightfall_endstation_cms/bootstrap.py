@@ -303,22 +303,20 @@ class ProfileSessionBootstrapper:
             )
 
     def _inject_devices(self, namespace: dict[str, Any]) -> int:
-        """Bind the happi device instances into the kernel namespace.
+        """Bind the already-live happi device instances into the kernel namespace.
 
         The SAM framework (``81-beam``/``94-sample``/…) references devices by
         their profile variable names (``smx``, ``pilatus2M``, …). The happi DB's
         item names are exactly those (see cms_happi.json), so each device is
-        bound under ``ns[name]``. Since the backend runs in ``instantiate="none"``
-        mode (so 00-startup's ``set_defaults`` runs first), each device is built
-        here via the happi client.
+        bound under ``ns[name]``.
 
-        Each freshly built instance is also pushed into the DeviceCatalog via
-        ``mark_device_live`` so the catalog/UI reflect that it is live instead of
-        staying UNKNOWN. These devices bypass the DeviceConnectionManager (which
-        only runs in the backend's "background" mode), so without this the GUI
-        device tree would never leave the UNKNOWN state. ``mark_device_live`` only
-        updates in-memory state + emits signals — it does NOT write through to the
-        happi JSON (unlike ``update_device``).
+        The happi backend (``instantiate="background"``) is the SINGLE device
+        instantiator and the DeviceConnectionManager is the single state owner:
+        by the time this runs (gated on ``all_connections_complete``) every
+        reachable device already has a live ``_ophyd_device`` on its catalog
+        entry. We bind those objects only — we do NOT re-instantiate, and we do
+        NOT write device state (no ``mark_device_live``). A device with no live
+        instance (offline IOC) is simply skipped; the catalog shows it OFFLINE.
 
         Returns the number of devices injected.
         """
@@ -327,73 +325,25 @@ class ProfileSessionBootstrapper:
             logger.warning("No device backend supplied; skipping kernel device injection")
             return 0
 
-        catalog = self._device_catalog()
-
         injected = 0
         missing: list[str] = []
         for info in backend.list_devices(active_only=False):
             obj = getattr(info, "_ophyd_device", None)
             if obj is None:
-                obj = self._instantiate_device(backend, info.name)
-                if obj is not None:
-                    # Share the instance back so the GUI catalog uses it too.
-                    try:
-                        info._ophyd_device = obj
-                    except Exception:
-                        pass
-            if obj is None:
+                # Not live (still connecting / offline IOC). Skip — never rebuild.
                 missing.append(info.name)
                 continue
             namespace[info.name] = obj
             injected += 1
-            # Notify the catalog so the device tree shows the live state instead
-            # of UNKNOWN (these instances never went through the connection
-            # manager). Best-effort: a missing/older catalog API must not abort
-            # injection.
-            if catalog is not None:
-                try:
-                    catalog.mark_device_live(info.id, obj)
-                except Exception:
-                    logger.debug(
-                        "mark_device_live failed for '{}'", info.name, exc_info=True
-                    )
 
-        logger.info("Injected {} happi devices into the kernel namespace", injected)
+        logger.info("Injected {} live happi devices into the kernel namespace", injected)
         if missing:
             logger.warning(
-                "{} device(s) had no instance to inject (still connecting or "
-                "failed to construct): {}",
+                "{} device(s) had no live instance to inject (offline IOC?), "
+                "skipped: {}",
                 len(missing), missing,
             )
         return injected
-
-    @staticmethod
-    def _device_catalog() -> Any | None:
-        """The DeviceCatalog singleton, or None if unavailable (e.g. tests)."""
-        try:
-            from lightfall.devices import DeviceCatalog
-
-            return DeviceCatalog.get_instance()
-        except Exception:
-            logger.debug("DeviceCatalog unavailable; injected devices won't update UI")
-            return None
-
-    @staticmethod
-    def _instantiate_device(backend: Any, name: str) -> Any | None:
-        """Instantiate one ophyd device via the backend's happi client, or None."""
-        client = getattr(backend, "_client", None)
-        if client is None:
-            return None
-        try:
-            results = client.search(name=name)
-            if results:
-                return results[0].get()
-        except Exception as exc:
-            # Expected when an IOC is offline (the PV won't connect in time) —
-            # warn and skip rather than dumping a traceback; the device is left
-            # out of the kernel and the session continues.
-            logger.warning("Could not instantiate device '{}' (IOC offline?): {}", name, exc)
-        return None
 
     @staticmethod
     def _seed_namespace(namespace: dict[str, Any]) -> None:

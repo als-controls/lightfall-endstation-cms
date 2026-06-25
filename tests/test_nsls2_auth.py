@@ -105,9 +105,9 @@ def test_authenticate_adopts_browser_client_on_success():
 
     class _Provider(NSLS2TiledAuthProvider):
         def _tiled_login(self, username, password):
-            return True
+            return object()  # a (fake) authenticated client
 
-        def _adopt_browser_client(self):
+        def _adopt_browser_client(self, client):
             calls["adopt"] += 1
 
     session = asyncio.run(_Provider().authenticate(username="rond", password="pw"))
@@ -121,30 +121,46 @@ def test_authenticate_skips_browser_adopt_on_login_failure():
 
     class _Provider(NSLS2TiledAuthProvider):
         def _tiled_login(self, username, password):
-            return False
+            return None
 
-        def _adopt_browser_client(self):
+        def _adopt_browser_client(self, client):
             calls["adopt"] += 1
 
     assert asyncio.run(_Provider().authenticate(username="rond", password="pw")) is None
     assert calls["adopt"] == 0
 
 
-def test_adopt_browser_client_adopts_warm_reading_node(monkeypatch):
-    """_adopt_browser_client opens from_profile(nsls2)[cms][raw] (reusing the
-    duo-warmed token) and hands it to TiledService.adopt_client."""
-    import tiled.client as tiled_client
+def test_authenticate_threads_login_client_to_adopt():
+    """The authenticated client from _tiled_login must be handed to
+    _adopt_browser_client — NOT discarded. This is the seam that makes the data
+    browser reuse the duo-warmed session instead of an anonymous client."""
+    seen = {}
+    sentinel = object()
 
-    import lightfall_endstation_cms.auth.nsls2_provider as mod
+    class _Provider(NSLS2TiledAuthProvider):
+        def _tiled_login(self, username, password):
+            return sentinel
 
-    class _Node:
-        def __init__(self, path=()):
-            self.path = path
+        def _adopt_browser_client(self, client):
+            seen["client"] = client
 
-        def __getitem__(self, key):
-            return _Node((*self.path, key))
+    session = asyncio.run(_Provider().authenticate(username="rond", password="pw"))
+    assert session is not None
+    assert seen["client"] is sentinel
 
-    monkeypatch.setattr(tiled_client, "from_profile", lambda name: _Node((name,)))
+
+class _Node:
+    """Minimal stand-in for a tiled node that records its navigation path."""
+
+    def __init__(self, path=()):
+        self.path = path
+
+    def __getitem__(self, key):
+        return _Node((*self.path, key))
+
+
+def _install_fake_adopt(monkeypatch, mod):
+    """Run the deferred adopt synchronously and capture what TiledService got."""
     monkeypatch.setattr(mod, "invoke_in_main_thread", lambda fn, *a, **k: fn(*a, **k))
 
     adopted = {}
@@ -156,23 +172,75 @@ def test_adopt_browser_client_adopts_warm_reading_node(monkeypatch):
 
     import lightfall.services.tiled_service as svc
 
-    monkeypatch.setattr(svc.TiledService, "get_instance", classmethod(lambda cls: _FakeService()))
-
-    mod.NSLS2TiledAuthProvider()._adopt_browser_client()
-
-    assert adopted["client"].path == (mod.TILED_PROFILE, *mod._BROWSE_PATH)
-    assert adopted["url"] == mod.TILED_URI
+    monkeypatch.setattr(
+        svc.TiledService, "get_instance", classmethod(lambda cls: _FakeService())
+    )
+    return adopted
 
 
-def test_adopt_browser_client_is_best_effort(monkeypatch):
-    """A browser that can't connect must never raise into the login flow."""
+def test_adopt_browser_client_uses_admin_key_not_duo_identity(monkeypatch):
+    """The browser must read cms/raw through the service/admin API key, NOT the
+    per-user Duo identity passed in. Tiled's per-entry access policy filters
+    every record out for a per-user principal (the empty-browser bug), so the
+    node adopted into TiledService must come from from_uri(api_key=...) — never
+    the Duo login client."""
     import tiled.client as tiled_client
 
     import lightfall_endstation_cms.auth.nsls2_provider as mod
 
-    def _boom(name):
-        raise RuntimeError("no tiled profile")
+    monkeypatch.setenv(mod._READ_API_KEY_ENV, "SERVICE-KEY")
 
-    monkeypatch.setattr(tiled_client, "from_profile", _boom)
-    # Must not raise.
-    mod.NSLS2TiledAuthProvider()._adopt_browser_client()
+    seen = {}
+
+    def _fake_from_uri(url, api_key=None, **k):
+        seen["url"] = url
+        seen["api_key"] = api_key
+        return _Node(("ADMIN_ROOT",))
+
+    monkeypatch.setattr(tiled_client, "from_uri", _fake_from_uri)
+
+    # The Duo login client must NOT be the read identity — fail if navigated.
+    class _DuoBoom:
+        def __getitem__(self, key):
+            raise AssertionError("must read via the admin key, not the Duo client")
+
+    adopted = _install_fake_adopt(monkeypatch, mod)
+
+    mod.NSLS2TiledAuthProvider()._adopt_browser_client(_DuoBoom())
+
+    # Opened with the service key against the NSLS-II server.
+    assert seen["url"] == mod.TILED_URI
+    assert seen["api_key"] == "SERVICE-KEY"
+    # Adopted the admin-key node navigated down the browse path.
+    assert adopted["client"].path == ("ADMIN_ROOT", *mod._BROWSE_PATH)
+    assert adopted["url"] == mod.TILED_URI
+
+
+def test_adopt_browser_client_falls_back_to_duo_without_key(monkeypatch):
+    """Without the service key (should not happen in production — 00-startup
+    requires it) fall back to the Duo login client rather than leaving the
+    browser on the ALS default server."""
+    import lightfall_endstation_cms.auth.nsls2_provider as mod
+
+    monkeypatch.delenv(mod._READ_API_KEY_ENV, raising=False)
+    adopted = _install_fake_adopt(monkeypatch, mod)
+
+    duo = _Node(("DUO_ROOT",))
+    mod.NSLS2TiledAuthProvider()._adopt_browser_client(duo)
+
+    assert adopted["client"].path == ("DUO_ROOT", *mod._BROWSE_PATH)
+    assert adopted["url"] == mod.TILED_URI
+
+
+def test_adopt_browser_client_is_best_effort(monkeypatch):
+    """A browser node that can't be opened must never raise into the login flow."""
+    import lightfall_endstation_cms.auth.nsls2_provider as mod
+
+    # No key → fall back to navigating the (failing) Duo client; must not raise.
+    monkeypatch.delenv(mod._READ_API_KEY_ENV, raising=False)
+
+    class _Boom:
+        def __getitem__(self, key):
+            raise RuntimeError("node unavailable")
+
+    mod.NSLS2TiledAuthProvider()._adopt_browser_client(_Boom())

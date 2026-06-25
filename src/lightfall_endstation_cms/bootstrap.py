@@ -154,7 +154,9 @@ class ProfileSessionBootstrapper:
             logger.debug("Could not create profile progress dialog", exc_info=True)
             return None
 
-    def run_profile(self, shell: Any, scripts: list[Path], label: str = "profile") -> None:
+    def run_profile(
+        self, shell: Any, scripts: list[Path], label: str = "profile", after_each: Any = None
+    ) -> None:
         """Execute the given profile *scripts* into the kernel shell (beamline)."""
         if not scripts:
             return
@@ -195,6 +197,11 @@ class ProfileSessionBootstrapper:
                         )
                 except Exception:
                     logger.exception("Unexpected error running profile script {}", script.name)
+                if after_each is not None:
+                    try:
+                        after_each(script, shell.user_ns)
+                    except Exception:
+                        logger.exception("after_each hook failed after {}", script.name)
                 # Keep the GUI alive/updating between scripts.
                 self._pump_events()
         finally:
@@ -296,22 +303,20 @@ class ProfileSessionBootstrapper:
             )
 
     def _inject_devices(self, namespace: dict[str, Any]) -> int:
-        """Bind the happi device instances into the kernel namespace.
+        """Bind the already-live happi device instances into the kernel namespace.
 
         The SAM framework (``81-beam``/``94-sample``/…) references devices by
         their profile variable names (``smx``, ``pilatus2M``, …). The happi DB's
         item names are exactly those (see cms_happi.json), so each device is
-        bound under ``ns[name]``. Since the backend runs in ``instantiate="none"``
-        mode (so 00-startup's ``set_defaults`` runs first), each device is built
-        here via the happi client.
+        bound under ``ns[name]``.
 
-        Each freshly built instance is also pushed into the DeviceCatalog via
-        ``mark_device_live`` so the catalog/UI reflect that it is live instead of
-        staying UNKNOWN. These devices bypass the DeviceConnectionManager (which
-        only runs in the backend's "background" mode), so without this the GUI
-        device tree would never leave the UNKNOWN state. ``mark_device_live`` only
-        updates in-memory state + emits signals — it does NOT write through to the
-        happi JSON (unlike ``update_device``).
+        The happi backend (``instantiate="background"``) is the SINGLE device
+        instantiator and the DeviceConnectionManager is the single state owner:
+        by the time this runs (gated on ``all_connections_complete``) every
+        reachable device already has a live ``_ophyd_device`` on its catalog
+        entry. We bind those objects only — we do NOT re-instantiate, and we do
+        NOT write device state (no ``mark_device_live``). A device with no live
+        instance (offline IOC) is simply skipped; the catalog shows it OFFLINE.
 
         Returns the number of devices injected.
         """
@@ -320,73 +325,25 @@ class ProfileSessionBootstrapper:
             logger.warning("No device backend supplied; skipping kernel device injection")
             return 0
 
-        catalog = self._device_catalog()
-
         injected = 0
         missing: list[str] = []
         for info in backend.list_devices(active_only=False):
             obj = getattr(info, "_ophyd_device", None)
             if obj is None:
-                obj = self._instantiate_device(backend, info.name)
-                if obj is not None:
-                    # Share the instance back so the GUI catalog uses it too.
-                    try:
-                        info._ophyd_device = obj
-                    except Exception:
-                        pass
-            if obj is None:
+                # Not live (still connecting / offline IOC). Skip — never rebuild.
                 missing.append(info.name)
                 continue
             namespace[info.name] = obj
             injected += 1
-            # Notify the catalog so the device tree shows the live state instead
-            # of UNKNOWN (these instances never went through the connection
-            # manager). Best-effort: a missing/older catalog API must not abort
-            # injection.
-            if catalog is not None:
-                try:
-                    catalog.mark_device_live(info.id, obj)
-                except Exception:
-                    logger.debug(
-                        "mark_device_live failed for '{}'", info.name, exc_info=True
-                    )
 
-        logger.info("Injected {} happi devices into the kernel namespace", injected)
+        logger.info("Injected {} live happi devices into the kernel namespace", injected)
         if missing:
             logger.warning(
-                "{} device(s) had no instance to inject (still connecting or "
-                "failed to construct): {}",
+                "{} device(s) had no live instance to inject (offline IOC?), "
+                "skipped: {}",
                 len(missing), missing,
             )
         return injected
-
-    @staticmethod
-    def _device_catalog() -> Any | None:
-        """The DeviceCatalog singleton, or None if unavailable (e.g. tests)."""
-        try:
-            from lightfall.devices import DeviceCatalog
-
-            return DeviceCatalog.get_instance()
-        except Exception:
-            logger.debug("DeviceCatalog unavailable; injected devices won't update UI")
-            return None
-
-    @staticmethod
-    def _instantiate_device(backend: Any, name: str) -> Any | None:
-        """Instantiate one ophyd device via the backend's happi client, or None."""
-        client = getattr(backend, "_client", None)
-        if client is None:
-            return None
-        try:
-            results = client.search(name=name)
-            if results:
-                return results[0].get()
-        except Exception as exc:
-            # Expected when an IOC is offline (the PV won't connect in time) —
-            # warn and skip rather than dumping a traceback; the device is left
-            # out of the kernel and the session continues.
-            logger.warning("Could not instantiate device '{}' (IOC offline?): {}", name, exc)
-        return None
 
     @staticmethod
     def _seed_namespace(namespace: dict[str, Any]) -> None:
@@ -415,6 +372,289 @@ class ProfileSessionBootstrapper:
             namespace.setdefault(key, value)
         logger.info("Seeded SAM config globals: beamline_stage={}", seeds["beamline_stage"])
 
+    def adopt_reexpressed_infra(self, namespace: dict[str, Any]) -> bool:
+        """Re-express 00-startup's infra onto Lightfall's RE; seed the namespace.
+
+        Replaces running the 00-03 infra scripts and adopting a separate profile
+        RunEngine (spec section 3). Attaches configure_base's bits -- redis
+        ``RE.md``, the kafka publisher, ``SupplementalData``, the ``assets_path``
+        hook, and the tiled document writer -- to ``get_engine().RE`` via the
+        standalone helpers, then seeds the kernel namespace with the names the
+        SAM scripts reference (``RE``, ``cat``/``db``/``mig``/
+        ``tiled_writing_client``, ``assets_path``/``proposal_path``, ``sd``).
+
+        Every step is best-effort (the helpers never raise); only a missing
+        RunEngine -- nothing to seed -- returns False.
+        """
+        from lightfall_endstation_cms.assets import (
+            assets_path,
+            proposal_path,
+            wire_assets_path,
+        )
+        from lightfall_endstation_cms.kafka_publisher import wire_kafka_publisher
+        from lightfall_endstation_cms.run_engine_md import wire_redis_metadata
+        from lightfall_endstation_cms.supplemental_data import wire_supplemental_data
+        from lightfall_endstation_cms.tiled_writer import wire_tiled_writer
+
+        engine = get_engine()
+        if getattr(engine, "RE", None) is None:
+            logger.error("Lightfall engine has no RE; cannot wire CMS infra")
+            return False
+
+        # Attach configure_base's bits to Lightfall's own RE (all idempotent).
+        wire_redis_metadata()
+        wire_kafka_publisher()
+        sd = wire_supplemental_data()
+        wire_assets_path()
+        wire_tiled_writer()
+
+        # Console RE is a GUI-safe proxy (as the old adopt() did).
+        namespace["RE"] = ConsoleREProxy(engine)
+        namespace.setdefault("assets_path", assets_path)
+        namespace.setdefault("proposal_path", proposal_path)
+        if sd is not None:
+            namespace.setdefault("sd", sd)
+
+        # Seed the Tiled read clients (cat/db/mig/tiled_writing_client).
+        self._seed_tiled_namespace(namespace)
+
+        # Seed the module-level imports the infra scripts (00-03, not run under
+        # Arch B) leak into the shared namespace; SAM scripts reference them
+        # un-imported (e.g. 90-bluesky's os.path.join).
+        self._seed_profile_imports(namespace)
+
+        # Seed device CLASSES the SAM scripts build with (e.g. 81-beam's
+        # CMS_Beamline_XR uses TriState vacuum valves / StandardProsilica
+        # cameras) that come from the device-defining scripts (10-52) we skip.
+        self._seed_device_classes(namespace)
+
+        # Seed the bare ophyd names (EpicsSignal, Device, Cpt, ...) the SAM
+        # scripts use but never import (81-beam has zero top-level imports).
+        self._seed_ophyd_names(namespace)
+
+        logger.info(
+            "Re-expressed CMS infra onto Lightfall's RE and seeded the namespace"
+        )
+        return True
+
+    @staticmethod
+    def _seed_tiled_namespace(namespace: dict[str, Any]) -> None:
+        """Seed cat/db/mig/tiled_writing_client from the CMS service key.
+
+        Mirrors 00-startup: ``tiled_reading_client = cat = from_profile(...)
+        ["cms"]["raw"]``, ``mig = [...]["cms/migration"]``, ``db = Broker(cat)``.
+        Uses the service API key (sees all cms/raw records). Best-effort: a
+        missing key or unreachable server must not abort the bootstrap.
+        """
+        api_key = os.environ.get("TILED_BLUESKY_WRITING_API_KEY_CMS")
+        if not api_key:
+            logger.warning(
+                "TILED_BLUESKY_WRITING_API_KEY_CMS not set; SAM cat/db/mig lookups "
+                "will be unavailable"
+            )
+            return
+        try:
+            from tiled.client import from_uri
+
+            client = from_uri(TILED_URI, api_key=api_key)
+            cat = client["cms"]["raw"]
+            namespace.setdefault("tiled_reading_client", cat)
+            namespace.setdefault("cat", cat)
+            namespace.setdefault("tiled_writing_client", cat)
+            try:
+                namespace.setdefault("mig", client["cms/migration"])
+            except Exception:
+                logger.debug("cms/migration node unavailable", exc_info=True)
+            try:
+                from databroker import Broker
+
+                namespace.setdefault("db", Broker(cat))
+            except Exception:
+                logger.debug(
+                    "databroker.Broker unavailable; 'db' not seeded", exc_info=True
+                )
+            logger.info("Seeded Tiled read clients (cat/db/mig) for the SAM namespace")
+        except Exception:
+            logger.exception(
+                "Could not seed Tiled read clients; SAM cat/db/mig lookups will be "
+                "unavailable"
+            )
+
+    @staticmethod
+    def _seed_profile_imports(namespace: dict[str, Any]) -> None:
+        """Seed the module-level imports 00-03 leak into the shared namespace.
+
+        The SAM scripts were written to run after the infra scripts in one
+        IPython namespace and reference modules those scripts import at top level
+        -- ``os.path.join`` in 90-bluesky, etc. -- without re-importing. Arch B
+        does not run 00-03, so replicate the common leaked ``import`` modules.
+        Best-effort and non-overwriting (a script that imports its own wins).
+        """
+        import importlib
+
+        # The plain ``import X`` modules 00-03 establish (see their top-of-file
+        # imports). ``from ... import *`` helpers (pyOlog) are not replicated;
+        # box validation surfaces any that a SAM script actually needs.
+        for mod in (
+            "os",
+            "sys",
+            "time",
+            "math",
+            "json",
+            "re",
+            "functools",
+            "itertools",
+            "collections",
+            "hashlib",
+            "shutil",
+            "numpy",
+            "ophyd",
+            "asyncio",
+            "queue",
+            "threading",
+            "contextlib",
+        ):
+            if mod in namespace:
+                continue
+            try:
+                namespace[mod] = importlib.import_module(mod)
+            except Exception:
+                logger.debug(
+                    "Could not seed profile import '{}'", mod, exc_info=True
+                )
+
+        # Aliases the legacy device scripts leak (import numpy as np, import
+        # pandas as pds/pd). 81-beam (zero imports) uses np heavily; 90/94 use pds.
+        for alias, mod_name in (("np", "numpy"), ("pd", "pandas"), ("pds", "pandas")):
+            if alias in namespace:
+                continue
+            try:
+                namespace[alias] = importlib.import_module(mod_name)
+            except Exception:
+                logger.debug(
+                    "Could not seed alias '{}' = {}", alias, mod_name, exc_info=True
+                )
+
+        # Bare epics functions the SAM scripts call un-imported (81-beam uses
+        # caget/caput heavily; leaked by 44-laserPTA's `from epics import ...`).
+        if "caget" not in namespace or "caput" not in namespace:
+            try:
+                from epics import caget, caput
+
+                namespace.setdefault("caget", caget)
+                namespace.setdefault("caput", caput)
+            except Exception:
+                logger.debug("Could not seed epics caget/caput", exc_info=True)
+
+    @staticmethod
+    def _redirect_config_paths(script: "Path", namespace: dict[str, Any]) -> None:
+        """Point 90-bluesky's CMS_CONFIG_FILENAME at a readable copy off-account.
+
+        90-bluesky hardcodes the config under xf11bm's home; it is first *read*
+        by 97-user's config_load(). Production runs as xf11bm (readable, so this
+        is a no-op there). When Lightfall runs as another account (e.g. rpandolfi
+        for dev/validation) that path is unreadable, so after 90 defines it and
+        before 97 reads it, redirect to the world-readable shared copy. No
+        profile edit; the override is purely in the live namespace.
+        """
+        if not script.name.startswith("90-"):
+            return
+        path = namespace.get("CMS_CONFIG_FILENAME")
+        if not path or os.access(path, os.R_OK):
+            return  # readable (e.g. running as xf11bm) -> keep the profile's path
+        fallback = os.environ.get(
+            "CMS_CONFIG_FILENAME_FALLBACK",
+            "/nsls2/data/cms/shared/config/bluesky/profile_collection/startup/.cms_config",
+        )
+        if os.access(fallback, os.R_OK):
+            namespace["CMS_CONFIG_FILENAME"] = fallback
+            logger.warning(
+                "CMS_CONFIG_FILENAME {} not readable as this user; redirected to "
+                "the shared copy {} (config_save will be read-only off-account)",
+                path,
+                fallback,
+            )
+        else:
+            logger.error(
+                "CMS_CONFIG_FILENAME {} not readable and no readable fallback at "
+                "{}; config_load() will fail",
+                path,
+                fallback,
+            )
+
+    # Device classes the SAM scripts instantiate directly (the device-defining
+    # scripts 10-52 are not run; happi provides instances, but 81-beam still
+    # builds CMS_Beamline_XR from these CLASSES). Sourced from our happi device
+    # modules. Confirmed by scanning the SAM set: only 81-beam references them.
+    _DEVICE_CLASS_SEEDS = {
+        "lightfall_endstation_cms.devices.shutters": ("TriState", "TwoButtonShutterNC"),
+        "lightfall_endstation_cms.devices.area_detectors": ("StandardProsilica",),
+    }
+
+    @classmethod
+    def _seed_device_classes(cls, namespace: dict[str, Any]) -> None:
+        """Seed the device classes the SAM scripts reference into the namespace.
+
+        81-beam instantiates these to build the beamline hierarchy (vacuum
+        valves, diagnostic cameras). Importing the modules defines classes only
+        -- no ophyd instances, so no CA connections here. Best-effort and
+        non-overwriting (a script that defines its own name wins).
+        """
+        import importlib
+
+        for mod_name, names in cls._DEVICE_CLASS_SEEDS.items():
+            try:
+                mod = importlib.import_module(mod_name)
+            except Exception:
+                logger.exception(
+                    "Could not import {} to seed device classes", mod_name
+                )
+                continue
+            for name in names:
+                if name in namespace:
+                    continue
+                obj = getattr(mod, name, None)
+                if obj is None:
+                    logger.warning("{} has no '{}' to seed", mod_name, name)
+                    continue
+                namespace[name] = obj
+        logger.info("Seeded device classes for the SAM scripts")
+
+    # ophyd names the SAM scripts reference but never import. 81-beam (zero
+    # top-level imports) inherited these from the legacy device scripts'
+    # `from ophyd import ...`. Confirmed by scanning the SAM set -- only these
+    # are referenced (the areaDetector/Signal/etc. names live only in the
+    # skipped device-defining scripts). (attr_on_ophyd, name_in_namespace).
+    _OPHYD_NAME_SEEDS = (
+        ("EpicsSignal", "EpicsSignal"),
+        ("EpicsSignalRO", "EpicsSignalRO"),
+        ("EpicsMotor", "EpicsMotor"),
+        ("Device", "Device"),
+        ("Component", "Component"),
+        ("Component", "Cpt"),
+    )
+
+    @classmethod
+    def _seed_ophyd_names(cls, namespace: dict[str, Any]) -> None:
+        """Seed the ophyd classes the SAM scripts reference un-imported.
+
+        Best-effort and non-overwriting (a script importing its own name wins).
+        """
+        try:
+            import ophyd
+        except Exception:
+            logger.exception("Could not import ophyd to seed its names")
+            return
+        for attr, alias in cls._OPHYD_NAME_SEEDS:
+            if alias in namespace:
+                continue
+            obj = getattr(ophyd, attr, None)
+            if obj is None:
+                logger.warning("ophyd has no '{}' to seed", attr)
+                continue
+            namespace[alias] = obj
+        logger.info("Seeded ophyd names for the SAM scripts")
+
     def bootstrap(self, shell: Any) -> bool:
         """Full handshake: run infra → adopt RE+Tiled → inject devices → run SAM.
 
@@ -423,10 +663,7 @@ class ProfileSessionBootstrapper:
         per-script handler in :meth:`run_profile`), so the session still comes
         up with RE + injected devices even if part of the framework doesn't load.
         """
-        infra = self._profile_scripts(self._keep("infra"))
-        self.run_profile(shell, infra, label="infra")
-
-        if not self.adopt(shell.user_ns):
+        if not self.adopt_reexpressed_infra(shell.user_ns):
             return False
 
         # Devices + config globals first, so the SAM framework finds them on load.
@@ -434,5 +671,5 @@ class ProfileSessionBootstrapper:
         self._seed_namespace(shell.user_ns)
 
         sam = self._profile_scripts(self._keep("sam"))
-        self.run_profile(shell, sam, label="sam")
+        self.run_profile(shell, sam, label="sam", after_each=self._redirect_config_paths)
         return True

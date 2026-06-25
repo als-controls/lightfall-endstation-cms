@@ -20,26 +20,14 @@ class _FakeBackend:
         return self._devices
 
 
-class _SpyCatalog:
-    """Records mark_device_live calls."""
-
-    def __init__(self):
-        self.marked: list = []
-
-    def mark_device_live(self, device_id, obj, **kw):
-        self.marked.append((device_id, obj))
-        return True
-
-
 def _dev(name, obj):
     return SimpleNamespace(name=name, id=uuid4(), _ophyd_device=obj)
 
 
-def test_inject_devices_binds_instances_under_profile_names(monkeypatch):
+def test_inject_devices_binds_live_instances_under_profile_names():
     d1 = _dev("smx", object())
     d2 = _dev("pilatus2M", object())
     bs = ProfileSessionBootstrapper(_FakeBackend([d1, d2]))
-    monkeypatch.setattr(bs, "_device_catalog", lambda: None)
 
     ns: dict = {}
     assert bs._inject_devices(ns) == 2
@@ -47,37 +35,35 @@ def test_inject_devices_binds_instances_under_profile_names(monkeypatch):
     assert ns["pilatus2M"] is d2._ophyd_device
 
 
-def test_inject_devices_notifies_catalog(monkeypatch):
-    d1 = _dev("smx", object())
-    spy = _SpyCatalog()
-    bs = ProfileSessionBootstrapper(_FakeBackend([d1]))
-    monkeypatch.setattr(bs, "_device_catalog", lambda: spy)
+def test_inject_devices_skips_devices_without_live_instance():
+    """Injection binds only already-live ophyd objects. A device whose
+    ``_ophyd_device`` is None (still connecting / offline IOC) is skipped, NOT
+    rebuilt: the happi backend + DeviceConnectionManager are the sole
+    instantiator and state-owner, so there is no second device-build path here.
+    """
+    live = _dev("smx", object())
+    not_live = _dev("bsx", None)
 
-    bs._inject_devices({})
-    # The injected device is pushed into the catalog so the UI leaves UNKNOWN.
-    assert spy.marked == [(d1.id, d1._ophyd_device)]
+    # A client is present but must NOT be consulted: injection never
+    # re-instantiates. The spy records any lookup so we can assert it stayed
+    # untouched (the old fire-once path called search() here to rebuild).
+    class _SpyClient:
+        def __init__(self):
+            self.searched: list = []
 
-
-def test_inject_devices_falls_back_to_happi_client(monkeypatch):
-    obj = object()
-
-    class _Result:
-        def get(self):
-            return obj
-
-    class _Client:
         def search(self, name=None):
-            return [_Result()]
+            self.searched.append(name)
+            return []
 
-    dev = _dev("bsx", None)
-    bs = ProfileSessionBootstrapper(_FakeBackend([dev], client=_Client()))
-    monkeypatch.setattr(bs, "_device_catalog", lambda: None)
+    client = _SpyClient()
+    bs = ProfileSessionBootstrapper(_FakeBackend([live, not_live], client=client))
 
     ns: dict = {}
-    bs._inject_devices(ns)
-    assert ns["bsx"] is obj
-    # The freshly built instance is shared back onto the catalog entry.
-    assert dev._ophyd_device is obj
+    assert bs._inject_devices(ns) == 1
+    assert ns["smx"] is live._ophyd_device
+    assert "bsx" not in ns
+    assert not_live._ophyd_device is None  # left untouched, not rebuilt
+    assert client.searched == [], "injection must not re-instantiate via the happi client"
 
 
 def test_inject_devices_noop_without_backend():
@@ -105,14 +91,17 @@ def test_bootstrap_runs_phases_in_order(monkeypatch):
     monkeypatch.setattr(bs, "_profile_scripts", lambda keep: sorted(keep))
     monkeypatch.setattr(
         bs, "run_profile",
-        lambda shell, scripts, label="": calls.append(("run", label)),
+        lambda shell, scripts, label="", after_each=None: calls.append(("run", label)),
     )
-    monkeypatch.setattr(bs, "adopt", lambda ns: calls.append(("adopt",)) or True)
+    monkeypatch.setattr(
+        bs, "adopt_reexpressed_infra", lambda ns: calls.append(("infra",)) or True
+    )
     monkeypatch.setattr(bs, "_inject_devices", lambda ns: calls.append(("inject",)) or 0)
 
     shell = SimpleNamespace(user_ns={})
     assert bs.bootstrap(shell) is True
-    assert calls == [("run", "infra"), ("adopt",), ("inject",), ("run", "sam")]
+    # Re-express infra -> inject devices -> run only the SAM scripts.
+    assert calls == [("infra",), ("inject",), ("run", "sam")]
 
 
 def test_bootstrap_aborts_when_adopt_fails(monkeypatch):
@@ -122,12 +111,14 @@ def test_bootstrap_aborts_when_adopt_fails(monkeypatch):
     monkeypatch.setattr(bs, "_profile_scripts", lambda keep: sorted(keep))
     monkeypatch.setattr(
         bs, "run_profile",
-        lambda shell, scripts, label="": calls.append(("run", label)),
+        lambda shell, scripts, label="", after_each=None: calls.append(("run", label)),
     )
-    monkeypatch.setattr(bs, "adopt", lambda ns: False)  # no RE -> abort
+    monkeypatch.setattr(
+        bs, "adopt_reexpressed_infra", lambda ns: False
+    )  # no RE -> abort
     monkeypatch.setattr(bs, "_inject_devices", lambda ns: calls.append(("inject",)) or 0)
 
     shell = SimpleNamespace(user_ns={})
     assert bs.bootstrap(shell) is False
-    # Infra ran, then adopt failed -> no injection, no SAM phase.
-    assert calls == [("run", "infra")]
+    # Infra adoption failed -> no injection, no SAM phase.
+    assert calls == []

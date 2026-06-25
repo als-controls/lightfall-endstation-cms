@@ -25,9 +25,47 @@ if TYPE_CHECKING:
 class CMSKernelPanel(BasePanel):
     """BasePanel that issues guarded commands to the live kernel SAM objects."""
 
+    # SAM is hosted by the devices-live bootstrap, which finishes AFTER this
+    # panel loads (post-login). Poll until it appears so the panel flips from
+    # "not loaded" to live without a manual Refresh. The poll stops as soon as
+    # SAM is up (or after the cap, beyond which the Refresh button still works).
+    _SAM_POLL_MS = 3000
+    _SAM_POLL_CAP_MS = 600000
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._sam_poll_timer: object | None = None
+        self._sam_poll_elapsed_ms = 0
         self.refresh()
+        if not kernel_access.sam_is_loaded():
+            self._start_sam_ready_poll()
+
+    def _start_sam_ready_poll(self) -> None:
+        """Begin polling for SAM hosting (best-effort; no-op without a Qt loop)."""
+        if self._sam_poll_timer is not None:
+            return
+        try:
+            from PySide6.QtCore import QTimer
+        except Exception:
+            return
+        self._sam_poll_timer = QTimer(self)
+        self._sam_poll_timer.setInterval(self._SAM_POLL_MS)
+        self._sam_poll_timer.timeout.connect(self._on_sam_ready_poll)
+        self._sam_poll_timer.start()
+
+    def _on_sam_ready_poll(self) -> None:
+        """Flip the panel to live once SAM is hosted; give up after the cap."""
+        self._sam_poll_elapsed_ms += self._SAM_POLL_MS
+        if kernel_access.sam_is_loaded():
+            self._stop_sam_ready_poll()
+            self.refresh()
+        elif self._sam_poll_elapsed_ms >= self._SAM_POLL_CAP_MS:
+            self._stop_sam_ready_poll()
+
+    def _stop_sam_ready_poll(self) -> None:
+        if self._sam_poll_timer is not None:
+            self._sam_poll_timer.stop()
+            self._sam_poll_timer = None
 
     def _action_widgets(self) -> list[QAbstractButton]:
         """Action buttons to disable while a console command is in flight.

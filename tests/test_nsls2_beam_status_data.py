@@ -129,3 +129,48 @@ def test_is_nominal_thresholds():
             beam_available=True, beam_current=500.0, lifetime=NOMINAL_LIFETIME_H
         )
     )
+
+
+def test_beam_present_requires_real_current():
+    from lightfall_endstation_cms.services.nsls2_beam_status import beam_present
+
+    # Shutter open + real current -> present.
+    assert beam_present(NSLS2BeamData(beam_available=True, beam_current=400.0))
+    # Shutter open but current effectively zero -> NOT present (the bug case:
+    # a shutter reading "open" at 0 mA must not count as live beam).
+    assert not beam_present(NSLS2BeamData(beam_available=True, beam_current=0.0))
+    # Shutter closed -> not present regardless of current.
+    assert not beam_present(NSLS2BeamData(beam_available=False, beam_current=400.0))
+
+
+def test_status_level_classification():
+    from lightfall_endstation_cms.services.nsls2_beam_status import status_level
+
+    # Nominal: available + above both thresholds.
+    assert (
+        status_level(
+            NSLS2BeamData(beam_available=True, beam_current=500.0, lifetime=10.0)
+        )
+        == "nominal"
+    )
+    # Degraded: beam present but below nominal current/lifetime.
+    assert (
+        status_level(
+            NSLS2BeamData(beam_available=True, beam_current=401.0, lifetime=12.5)
+        )
+        == "degraded"
+    )
+    # Down: shutter open but 0 mA (the reported bug -> red, not green).
+    assert (
+        status_level(
+            NSLS2BeamData(beam_available=True, beam_current=0.0, lifetime=0.0)
+        )
+        == "down"
+    )
+    # Down: shutter closed.
+    assert (
+        status_level(
+            NSLS2BeamData(beam_available=False, beam_current=500.0, lifetime=10.0)
+        )
+        == "down"
+    )

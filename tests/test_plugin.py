@@ -15,7 +15,21 @@ def test_is_device_backend_plugin():
     assert CMSProfileCollectionPlugin.type_name == "device_backend"
 
 
-def test_create_backend_returns_happi_backend():
+class _FakeTrigger:
+    """No-op stand-in for CMSSessionTrigger (avoids a real QTimer in tests)."""
+
+    def __init__(self, backend=None):
+        self.backend = backend
+        self.armed_with = None
+
+    def arm(self, **kwargs):
+        self.armed_with = kwargs
+
+
+def test_create_backend_returns_happi_backend(monkeypatch):
+    import lightfall_endstation_cms.session_trigger as st_mod
+
+    monkeypatch.setattr(st_mod, "CMSSessionTrigger", _FakeTrigger)
     plugin = CMSProfileCollectionPlugin()
     assert plugin.name == "cms_profile_collection"
     backend = plugin.create_backend()
@@ -32,6 +46,25 @@ def test_create_backend_returns_happi_backend():
     # re-login against already-instantiated devices). SAM hosting is re-expressed
     # as a catalog-driven post-login action instead.
     assert getattr(backend, "_session_trigger", None) is None
+    # The trigger is held on the PLUGIN (not the backend) so its timer survives.
+    assert isinstance(plugin._session_trigger, _FakeTrigger)
+
+
+def test_create_backend_arms_gate_with_timeout(monkeypatch):
+    import lightfall_endstation_cms.session_trigger as st_mod
+
+    monkeypatch.setattr(st_mod, "CMSSessionTrigger", _FakeTrigger)
+
+    plugin = CMSProfileCollectionPlugin()
+    plugin.create_backend()
+
+    trig = plugin._session_trigger
+    assert isinstance(trig, _FakeTrigger)
+    # The gate no longer waits on a named device list — it waits on the
+    # connection manager's all_connections_complete signal, with a degraded
+    # deadline. arm() is called with just the timeout.
+    kwargs = trig.armed_with
+    assert "timeout_s" in kwargs
 
 
 def test_packaged_happi_db_is_valid_json_with_cms_devices():

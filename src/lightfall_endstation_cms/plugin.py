@@ -6,17 +6,24 @@ Devices come from a happi JSON database shipped with this package
 instantiates the ophyd objects in the background, so the device tree is
 populated at startup without running the CMS profile-collection.
 
-The profile-collection is still executed post-login by the
-:class:`ProfileSessionBootstrapper`, in two phases: the infrastructure scripts
-(``00``–``03``) to adopt the live ``RunEngine`` + Tiled client, then — after the
-happi devices are injected into the kernel — the high-level SAM framework
-(``81``/``94``/``95``/``96``/``97``/``991``) the console relies on. The
+Post-login, the CMS profile is hosted by the
+:class:`~lightfall_endstation_cms.bootstrap.ProfileSessionBootstrapper`, armed on
+the devices-live gate
+(:class:`~lightfall_endstation_cms.session_trigger.CMSSessionTrigger`). Its INFRA
+-- configure_base's redis ``RE.md``, kafka publisher, ``SupplementalData``, the
+``assets_path`` hook, and the tiled writer -- is re-expressed onto Lightfall's
+own ``RunEngine`` instead of running ``00``-``03``; then, once the happi devices
+are injected into the kernel, the high-level SAM framework
+(``81``/``94``/``95``/``96``/``97``/``991``) the console relies on is run. The
 device-DEFINING scripts are never run; happi is the single source of truth for
-devices (see ``bootstrap.DEFAULT_INFRA_KEEP`` / ``DEFAULT_SAM_KEEP``).
+devices (see ``bootstrap.DEFAULT_SAM_KEEP``).
 """
 from __future__ import annotations
 
+import os
 from importlib.resources import as_file, files
+
+from loguru import logger
 
 from lightfall.devices.backends.happi import HappiBackend
 from lightfall.devices.base import DeviceBackend
@@ -39,6 +46,14 @@ def _happi_db_path() -> str:
         return str(path)
 
 
+def _bootstrap_timeout_s() -> float:
+    """Seconds before the SAM bootstrap fires in degraded mode (env-tunable)."""
+    try:
+        return float(os.environ.get("CMS_BOOTSTRAP_TIMEOUT_S", "60"))
+    except (TypeError, ValueError):
+        return 60.0
+
+
 class CMSProfileCollectionPlugin(DeviceBackendPlugin):
     """Contributes the CMS (11-BM) device backend (happi-backed)."""
 
@@ -57,13 +72,40 @@ class CMSProfileCollectionPlugin(DeviceBackendPlugin):
         # sequence around — the old instantiate="none" + kernel-injection
         # workaround (and 00-startup's set_defaults) is gone.
         #
-        # NOTE: SAM hosting (the profile/console framework the CMS panels veneer
-        # over) is being re-expressed as a catalog-driven post-login action;
-        # the old AUTHENTICATED-armed CMSSessionTrigger is intentionally NOT
-        # armed here (it armed too late under post-login loading and would fire
-        # the bootstrap on a re-login against already-instantiated devices).
-        return HappiBackend(
+        # SAM hosting (the profile/console framework the CMS panels veneer over)
+        # is re-expressed as a devices-live post-login action: build the happi
+        # backend, then arm the gate that runs ProfileSessionBootstrapper once
+        # the catalog's ophyd objects are live. Background instantiation is
+        # async, so the bootstrap cannot run synchronously here.
+        backend = HappiBackend(
             path=_happi_db_path(),
             beamline=_BEAMLINE,
             instantiate="background",
         )
+        self._arm_session_trigger(backend)
+        return backend
+
+    def _arm_session_trigger(self, backend: DeviceBackend) -> None:
+        """Arm the devices-loaded gate that hosts the CMS profile (SAM phase).
+
+        Background device instantiation is async, so the bootstrap -- which
+        injects the live ophyd objects and runs the SAM framework -- cannot run
+        at backend-creation time. CMSSessionTrigger waits for the
+        DeviceConnectionManager's ``all_connections_complete`` signal (the
+        "devices loaded" event), then fires ProfileSessionBootstrapper on the GUI
+        thread (which ensures the kernel and injects). The trigger is held on the
+        plugin instance so its deadline QTimer is not garbage-collected.
+        Best-effort: a failure to arm must not fail backend creation (re-login
+        retries).
+        """
+        try:
+            from lightfall_endstation_cms.session_trigger import CMSSessionTrigger
+
+            trigger = CMSSessionTrigger(backend)
+            self._session_trigger = trigger
+            trigger.arm(timeout_s=_bootstrap_timeout_s())
+        except Exception:
+            logger.exception(
+                "Could not arm the CMS session trigger; SAM hosting will not "
+                "start automatically (re-login to retry)"
+            )

@@ -1,164 +1,151 @@
-"""Run the CMS profile bootstrap once all named happi devices are live."""
+"""Run the CMS profile bootstrap once device connections settle + kernel is ready."""
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from lightfall.utils.threads import invoke_in_main_thread
 from loguru import logger
 
-from lightfall_endstation_cms import kernel_access
 from lightfall_endstation_cms.bootstrap import ProfileSessionBootstrapper
 
 
 class CMSSessionTrigger:
-    """Arms a one-shot profile bootstrap once the named CMS devices are live.
+    """Fire the CMS profile bootstrap once the device-connection batch settles.
 
-    Instead of gating on the ``AUTHENTICATED`` SessionManager transition (which
-    fires before the device catalog has finished background-instantiating ophyd
-    objects), this trigger polls :func:`~lightfall_endstation_cms.kernel_access
-    .devices_by_name` at a configurable interval until all requested devices
-    report a live ``._ophyd_device``, then fires the bootstrap.
+    The CMS device catalog is a happi backend in ``instantiate="background"``
+    mode, so the :class:`DeviceConnectionManager` instantiates and connects every
+    device on worker threads and emits ``all_connections_complete`` when the
+    batch has fully drained (every device ONLINE/OFFLINE/TIMEOUT). That signal is
+    the "devices are loaded" gate.
 
-    If the deadline passes before all devices become live the bootstrap still
-    runs in *degraded* mode (some devices may be offline) so the session is
-    never silently blocked.
+    On it we run :class:`ProfileSessionBootstrapper` on the GUI thread, which
+    ensures the IPython kernel ("kernel is loaded") and binds the live ophyd
+    objects into the kernel namespace before running the SAM scripts.  The kernel
+    is created by the IPython panel itself (``ensure_kernel`` is synchronous on
+    the GUI thread); we never build a competing kernel.
 
-    The device backend is passed through so its ophyd instances can be injected
-    under their profile variable names.
+    A deadline timer is the safety net: if the completion signal never arrives
+    (e.g. a backend load that errors before kicking ``connect_devices``), the
+    bootstrap still runs in degraded mode so the session is never silently
+    blocked.
+
+    Note: ``all_connections_complete`` comes from the shared
+    DeviceConnectionManager singleton.  At CMS the happi backend is the only
+    background-mode backend, so the first completion is the CMS batch.  If other
+    background backends are added later, scope the gate to this backend's devices.
     """
 
     def __init__(self, backend: Any = None) -> None:
         self._backend = backend
         self._done = False        # a bootstrap has SUCCEEDED — stop retrying
         self._running = False     # a bootstrap is in progress — block re-entry
+        self._timer: Any = None   # deadline QTimer (single-shot), created in arm()
+        self._manager: Any = None  # held ref to the connection manager singleton
+        self._subscribed = False  # whether _on_devices_loaded is connected
 
-        # Set by arm(); None means arm() has not been called yet.
-        self._device_names: list[str] | None = None
-        self._deadline: float = 0.0
-        self._timer: Any = None   # QTimer instance, created lazily in arm()
-
-        # Injectable clock: tests override this to simulate elapsed time without
-        # sleeping.  The default is time.monotonic (never wall-clock, so it is
-        # unaffected by NTP adjustments and always strictly increasing).
-        self._now = time.monotonic
-
-    def arm(
-        self,
-        device_names: list[str],
-        *,
-        poll_ms: int = 500,
-        timeout_s: float = 60.0,
-    ) -> None:
-        """Start polling for device liveness.
+    def arm(self, *, timeout_s: float = 60.0) -> None:
+        """Subscribe to the devices-loaded gate and start the degraded deadline.
 
         Args:
-            device_names: Happi item names to wait for.  The bootstrap fires
-                when every name in this list has a live ophyd object, or when
-                the timeout expires (degraded).
-            poll_ms: Timer interval in milliseconds.
-            timeout_s: Seconds before the trigger fires in degraded mode even
-                if some devices are still missing.
+            timeout_s: Seconds before the bootstrap fires in degraded mode if the
+                connection batch never reports completion.
         """
-        self._device_names = list(device_names)
-        self._deadline = self._now() + timeout_s
+        self._subscribe()
+        self._start_deadline(timeout_s)
+        logger.info(
+            "CMS session trigger armed — waiting for device connections to settle "
+            "(degraded bootstrap after {}s)",
+            timeout_s,
+        )
 
-        # Re-arm (the documented retry path) must not leak the previous timer:
-        # tear down any existing one before creating a new one, or the orphan
-        # keeps ticking _poll forever (it can never stop itself once self._timer
-        # is overwritten).
-        if self._timer is not None:
+    # === Gate wiring ===
+
+    def _subscribe(self) -> None:
+        """Connect ``_on_devices_loaded`` to the manager's batch-complete signal.
+
+        Re-arm (the retry path) must not leave a duplicate subscription, so any
+        prior connection is torn down first.  A missing connection manager is the
+        one genuinely-expected absence (headless unit tests): there the caller
+        drives ``_on_devices_loaded()`` / ``_on_deadline()`` directly.
+        """
+        self._unsubscribe()
+        try:
+            from lightfall.devices.connection_manager import DeviceConnectionManager
+
+            manager = DeviceConnectionManager.get_instance()
+        except Exception:
+            logger.exception(
+                "Could not reach DeviceConnectionManager; the SAM bootstrap will "
+                "rely on the degraded-mode deadline only"
+            )
+            return
+        manager.all_connections_complete.connect(self._on_devices_loaded)
+        self._manager = manager
+        self._subscribed = True
+
+    def _unsubscribe(self) -> None:
+        if self._manager is not None and self._subscribed:
             try:
-                self._timer.stop()
-                self._timer.timeout.disconnect(self._poll)
+                self._manager.all_connections_complete.disconnect(self._on_devices_loaded)
             except Exception:
                 pass
-            self._timer = None
+        self._subscribed = False
 
-        # Create a QTimer that calls _poll at each interval. Only the import is
-        # guarded: a missing Qt binding (headless / pure unit test) is the one
-        # genuinely-expected absence — there the caller drives _poll() manually.
-        # QTimer construction itself does NOT need a running event loop, so any
-        # failure there is a real bug and must surface loudly rather than
-        # silently leaving the gate disarmed (SAM would never run).
+    def _start_deadline(self, timeout_s: float) -> None:
+        # Tear down any existing timer so re-arm does not leak a ticking orphan.
+        self._stop_deadline()
         try:
             from qtpy.QtCore import QTimer
         except ImportError:
             self._timer = None
-        else:
-            self._timer = QTimer()
-            self._timer.setInterval(poll_ms)
-            self._timer.timeout.connect(self._poll)
-            self._timer.start()
+            return
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.setInterval(int(timeout_s * 1000))
+        timer.timeout.connect(self._on_deadline)
+        timer.start()
+        self._timer = timer
 
-        logger.info(
-            "CMS session trigger armed — waiting for {} device(s): {}",
-            len(self._device_names),
-            ", ".join(self._device_names),
-        )
+    def _stop_deadline(self) -> None:
+        if self._timer is not None:
+            try:
+                self._timer.stop()
+                self._timer.timeout.disconnect(self._on_deadline)
+            except Exception:
+                pass
+            self._timer = None
 
-    def _poll(self) -> None:
-        """Single poll step — called by QTimer or directly by tests.
+    # === Gate callbacks ===
 
-        Checks device liveness and fires the bootstrap when all devices are live
-        or the deadline has passed.  Safe to call before ``arm()`` (no-op).
-        """
+    def _on_devices_loaded(self) -> None:
+        """All device connections have settled — fire the bootstrap (nominal)."""
         if self._done or self._running:
-            # Already fired or in progress — stop the timer and return.
-            if self._timer is not None:
-                try:
-                    self._timer.stop()
-                except Exception:
-                    pass
             return
+        self._stop_deadline()
+        logger.info("CMS device connections settled — running profile bootstrap")
+        self._fire()
 
-        if self._device_names is None:
-            # arm() has not been called yet.
+    def _on_deadline(self) -> None:
+        """Deadline elapsed before the batch settled — fire in degraded mode."""
+        if self._done or self._running:
             return
+        logger.warning(
+            "CMS session trigger: device connections did not settle before the "
+            "deadline; running the profile bootstrap in degraded mode"
+        )
+        self._fire()
 
-        live = kernel_access.devices_by_name(self._device_names)
-        missing = [n for n in self._device_names if n not in live]
-
-        if not missing:
-            # All requested devices are live — nominal path.
-            if self._timer is not None:
-                try:
-                    self._timer.stop()
-                except Exception:
-                    pass
-            self._fire()
-            return
-
-        if self._now() >= self._deadline:
-            # Timed out waiting — fire in degraded mode anyway so the session
-            # is never silently blocked by an offline device.
-            if self._timer is not None:
-                try:
-                    self._timer.stop()
-                except Exception:
-                    pass
-            logger.warning(
-                "CMS session trigger: timed out waiting for device(s): {}. "
-                "Running bootstrap in degraded mode.",
-                ", ".join(missing),
-            )
-            self._fire()
-            return
-
-        # Not all live yet and deadline not reached — wait for the next tick.
+    # === Bootstrap execution (GUI thread) ===
 
     def _fire(self) -> None:
         """Marshal the bootstrap onto the GUI thread (once-only).
 
-        CRITICAL: the bootstrap creates QWidgets (the IPython panel), starts an
-        in-process kernel and imports qtconsole, and pumps the Qt event loop —
-        all of which MUST happen on the GUI thread.  Running it on any other
-        thread (a) is illegal Qt cross-thread widget creation and (b) races the
-        main thread's proactive panel-init import of qtconsole, deadlocking on
-        the Python import lock (observed on ws5: MainThread stuck in importlib
-        acquire under IPythonPanel._setup_ui).  Marshal the whole bootstrap
-        onto the main thread.
+        CRITICAL: the bootstrap ensures the IPython panel/kernel, imports
+        qtconsole and pumps the Qt event loop — all of which MUST happen on the
+        GUI thread.  ``all_connections_complete`` is already delivered on the GUI
+        thread, but the deadline timer and direct test calls may not be, so the
+        marshal is kept defensively.
         """
         if self._done or self._running:
             return
@@ -191,7 +178,7 @@ class CMSSessionTrigger:
             logger.error("CMS bootstrap: console shell unavailable; cannot run profile")
             return  # not done — the caller may retry by calling arm() again
 
-        logger.info("CMS devices live — running profile-collection bootstrap")
+        logger.info("CMS devices loaded — running profile-collection bootstrap")
         self._running = True
         try:
             ok = ProfileSessionBootstrapper(self._backend).bootstrap(shell)
@@ -204,6 +191,8 @@ class CMSSessionTrigger:
         if ok:
             # Succeeded once — never re-run for this app session.
             self._done = True
+            self._unsubscribe()
+            self._stop_deadline()
             logger.info("CMS profile bootstrap complete")
         else:
             # Leave _done False so re-arming / retrying is possible.

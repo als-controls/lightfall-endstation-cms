@@ -127,6 +127,14 @@ class NSLS2BeamData:
 NOMINAL_CURRENT_MA = 450.0
 NOMINAL_LIFETIME_H = 8.9
 
+# Minimum ring current (mA) for the beam to count as actually present. The
+# shutter PV can read "open" while the ring current is effectively zero -- right
+# after a beam dump, or (commonly at startup) when the shutter PV has connected
+# and reported before the DCCT current/lifetime PVs deliver their first value.
+# Below this we treat the ring as down rather than trusting the shutter alone,
+# so the status bar never paints a healthy/green status over a dead ring. Tunable.
+BEAM_PRESENT_CURRENT_MA = 1.0
+
 
 def is_nominal(data: NSLS2BeamData) -> bool:
     """True when beam is available and both current and lifetime are above the
@@ -136,6 +144,36 @@ def is_nominal(data: NSLS2BeamData) -> bool:
         and data.beam_current > NOMINAL_CURRENT_MA
         and data.lifetime > NOMINAL_LIFETIME_H
     )
+
+
+def beam_present(data: NSLS2BeamData) -> bool:
+    """True when the ring is actually delivering beam.
+
+    Requires both the shutter to be open (``beam_available``) and a non-trivial
+    ring current. This guards against the shutter PV reading "open" while the
+    current is effectively zero, which would otherwise color the status bar
+    green over a dead ring (see ``BEAM_PRESENT_CURRENT_MA``).
+    """
+    return data.beam_available and data.beam_current >= BEAM_PRESENT_CURRENT_MA
+
+
+def status_level(data: NSLS2BeamData) -> str:
+    """Classify ring health into a semantic level for status-bar coloring.
+
+    Returns one of:
+
+    - ``"nominal"``:  beam present and both current and lifetime above the
+      nominal thresholds (healthy user operations) -> success/green.
+    - ``"degraded"``: beam present but current or lifetime below nominal
+      (e.g. injecting, decaying, or low-current fill) -> warning/amber.
+    - ``"down"``:     no beam -- shutter closed, or current effectively zero
+      (beam dump, or values not yet reported) -> error/red.
+    """
+    if not beam_present(data):
+        return "down"
+    if is_nominal(data):
+        return "nominal"
+    return "degraded"
 
 
 def apply_pv_value(data: NSLS2BeamData, pv_name: str, value: object) -> None:

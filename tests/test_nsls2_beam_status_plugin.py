@@ -73,6 +73,49 @@ def test_shows_current_and_lifetime_when_available(qapp, qtbot, monkeypatch):
     assert fake.started is True  # lazy-started
 
 
+def test_color_is_red_when_open_shutter_but_zero_current(qapp, qtbot, monkeypatch):
+    """Regression: shutter "open" at 0 mA must render red, not green.
+
+    Previously the color came straight from data.beam_available (shutter PV),
+    so a shutter reading open while the ring current was 0 mA painted the bar
+    with the success color. It must now use the error color.
+    """
+    from lightfall.ui.theme import ThemeManager
+
+    colors = ThemeManager.get_instance().colors
+    data = NSLS2BeamData(beam_current=0.0, lifetime=0.0, beam_available=True)
+    fake = _FakeService(connected=True, data=data)
+    _install(monkeypatch, fake)
+    plugin = _make(qtbot, fake)
+    plugin.update()
+    style = plugin._button.styleSheet()
+    assert colors.error in style
+    assert colors.success not in style
+    # Off-nominal -> numbers stay visible so operators notice.
+    assert "0 mA" in plugin._button.text()
+
+
+def test_color_tiers_degraded_and_nominal(qapp, qtbot, monkeypatch):
+    """Beam present but below nominal -> amber; healthy -> green (text hidden)."""
+    from lightfall.ui.theme import ThemeManager
+
+    colors = ThemeManager.get_instance().colors
+
+    # Degraded: available, real current, but below nominal thresholds.
+    degraded = NSLS2BeamData(beam_current=401.0, lifetime=12.5, beam_available=True)
+    fake = _FakeService(connected=True, data=degraded)
+    _install(monkeypatch, fake)
+    plugin = _make(qtbot, fake)
+    plugin.update()
+    assert colors.warning in plugin._button.styleSheet()
+
+    # Nominal: above both thresholds -> green, text hidden (quiet bar).
+    fake._data = NSLS2BeamData(beam_current=500.0, lifetime=10.0, beam_available=True)
+    plugin.update()
+    assert colors.success in plugin._button.styleSheet()
+    assert plugin._button.text() == ""
+
+
 def test_offline_when_disconnected(qapp, qtbot, monkeypatch):
     fake = _FakeService(connected=False, data=None)
     _install(monkeypatch, fake)

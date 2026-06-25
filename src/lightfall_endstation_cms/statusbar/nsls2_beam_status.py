@@ -20,6 +20,7 @@ from lightfall.utils.logging import logger
 from lightfall_endstation_cms.services.nsls2_beam_status import (
     NSLS2BeamStatusService,
     is_nominal,
+    status_level,
 )
 
 if TYPE_CHECKING:
@@ -29,9 +30,11 @@ if TYPE_CHECKING:
 class NSLS2BeamStatusPlugin(StatusBarPlugin):
     """Status bar plugin showing NSLS-II storage-ring status.
 
-    Color coding: success when beam is available, error when not, and
-    text_secondary when offline / disconnected. Clicking opens the NSLS-II
-    operating-status page.
+    Color coding reflects live ring health (not just the shutter PV):
+    success/green when nominal, warning/amber when beam is present but degraded
+    (low current or lifetime), error/red when beam is down (shutter closed or
+    current effectively zero), and text_secondary/gray when offline /
+    disconnected. Clicking opens the NSLS-II operating-status page.
     """
 
     metadata: ClassVar[StatusBarPluginMetadata] = StatusBarPluginMetadata(
@@ -124,7 +127,15 @@ class NSLS2BeamStatusPlugin(StatusBarPlugin):
         if self._theme_manager is None:
             self._theme_manager = ThemeManager.get_instance()
         colors = self._theme_manager.colors
-        color = colors.success if data.beam_available else colors.error
+        # Dynamic, value-driven coloring: green only when the ring is genuinely
+        # nominal, amber when beam is present but degraded, red when it is down.
+        # Keying off status_level() (not data.beam_available alone) means a
+        # shutter that reads "open" at 0 mA no longer paints the bar green.
+        color = {
+            "nominal": colors.success,
+            "degraded": colors.warning,
+            "down": colors.error,
+        }[status_level(data)]
 
         self.set_icon(qta.icon("ri.sun-line", color=color))
         # When everything is nominal, keep the bar quiet -- show just the green

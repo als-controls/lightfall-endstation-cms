@@ -81,6 +81,31 @@ not as absence of data.
   tools come back empty, check which identity the adopted client carries
   before concluding the node is empty.
 
+### Tiled here is BIG and SLOW — read narrowly
+The `cms/raw` catalog holds **millions** of runs and the NSLS-II server is slow.
+Walking the whole thing is bad form: it pages through the entire index, can take
+many minutes, and (because the embedded IPython console runs on the Qt main
+thread) will **freeze the whole Lightfall UI** while it churns.
+
+- **Never materialize the full catalog.** Avoid `list(client)`, `for x in
+  client:`, `client.values()`, `client.items()`, `len(client)`, or
+  `np.asarray()` over a whole image column. Any of these fans out to millions of
+  network round-trips.
+- **Fetch a known run by UID** — `client[uid]` is O(1). Always prefer this when
+  you have the UID.
+- **For "recent runs", slice a server-sorted view**, e.g.
+  `client.sort(("time", -1)).values_indexer[:N]` — let the server do the
+  ordering and only pull N. Do **not** build `[k for k, _ in client.items()]`
+  just to take the last few (that walks everything).
+- **Prefer the MCP tools**, which already bound their reads:
+  `lightfall_get_run_history(limit=...)`, `lightfall_get_last_run`,
+  `lightfall_get_scan_data(uid=...)` (it summarizes image/array columns by
+  shape instead of downloading pixels). Reach for raw `client` iteration only
+  when a tool can't express what you need — and even then, keep it bounded.
+- **Single frames, not whole stacks:** use `fetch_frame` / `fetch_subcube`
+  (`lightfall.utils.tiled_helpers`) for server-side slicing instead of pulling a
+  full N×H×W array.
+
 ### Session / profile / site
 - The CMS IPython profile-collection is hosted inside Lightfall's kernel:
   infra scripts (00–03) stand up the RunEngine + Tiled clients; the SAM

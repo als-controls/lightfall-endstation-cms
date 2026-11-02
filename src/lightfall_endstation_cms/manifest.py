@@ -64,7 +64,7 @@ manifest = PluginManifest(
             metadata={"beamline": "11-BM CMS"},
         ),
         PluginEntry(
-            type_name="agent",
+            type_name="tool",
             name="cms_site_notes",
             import_path="lightfall_endstation_cms.agents.cms_notes:CMSSiteNotesAgent",
             metadata={"beamline": "11-BM CMS"},
